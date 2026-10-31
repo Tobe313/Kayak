@@ -10,13 +10,18 @@ CHIRP SWEEP VOWEL METAL), TONE, MOTION, SEED. Up to 16 grains, shared by 8 voice
 
 | control | |
 | --- | --- |
-| SELECT | the page: **SRC A**, **SRC B** (TYPE TONE MOTION SEED), **GRAIN** (SIZE DENS POS SPRD), **GRAIN+** (MORPH RAND PITCH SCAN), **FILT/ENV** (CUT RES ATK REL), **LFO** (RATE WAVE DEPTH DEST) |
+| SELECT | the page: **SRC A**, **SRC B** (TYPE TONE MOTION SEED), **GRAIN** (SIZE DENS POS SPRD), **GRAIN+** (MORPH RAND PITCH SCAN), **FILTER** (TYPE CUT RES DRIVE), **ENV** (KTRK SEM ATK REL), **LFO** (RATE WAVE DEPTH DEST) |
+| FX | the effects' pages and back (FX lit there): **CHORUS** (RATE DEPTH MIX), **DELAY** (TIME FEEDBK TONE MIX), **REVERB** (SIZE DAMP PRE MIX), **DRIVE** (TYPE AMOUNT TONE MIX); SELECT moves among them |
 | KNOB 1..4 | the page's four values, in their units (ms, grains a second, %, Hz, semitones); the faster the turn, the bigger the step (up to 8 a detent) |
 | PRESETS | the sound: 8 factory presets (ChoralRoot's CLOUD PAD, SHIMMER, BREATH PAD, FROZEN, STRUM, SWARM, ACID DUST, GLITCH), then the user presets; MIDI program change too |
 | SAVE | save the sound: PRESETS picks the user slot (1..16), SAVE again writes it, HOME cancels |
 | ALGORITHM | the MIDI channel (OMNI or 1..16) |
 | OCT- OCT+ | the octave |
 
+The filter and the effects are [OberVave](https://github.com/zvenson/obervave)'s (zvenson): its voice filter (an
+input stage driven into a tanh, then LP12 HP12 BP12 NOTCH and SEM (LP .. notch .. HP by the SEM knob) from a
+saturating SVF, or LP24 from a ladder; KTRK makes the cutoff follow the note), and its stereo chorus, ping-pong delay
+(20 .. 550 ms here), Dattorro plate reverb and parallel drive (OVERDRIVE DIST FUZZ CRUSH).
 The LFO (SINE TRI SAW SQUARE S&H, 0.05 .. 20 Hz) moves one of MORPH POS SIZE DENS SPRD PITCH CUT. The sound being
 played (marked `*` once changed), the octave, the channel and the page are kept in flash.
 

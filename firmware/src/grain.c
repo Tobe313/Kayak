@@ -13,6 +13,8 @@
  *   the main loop: gp_note_on / gp_note_off, grain_poll (one slice a call), gp_p[] the knobs (one writer: the loop) */
 #include "grain_dsp.h"
 #include "grain_src.c"
+#include "obv_filter.h"
+#include "obv_fx.h"
 
 #define GP_NV 8u                 /* voices */
 #define GP_NG 16u                /* grains, shared by the voices */
@@ -22,22 +24,32 @@
 #define GP_RATE_Q16 ((GS_RATE << 16) / 44100u)
 #define GP_VOICE 12000           /* a voice's level at full velocity */
 
-/* ---- the knobs: 24 values, six pages of four (dinghy.c draws and turns them) */
+/* ---- the knobs: 44 values, eleven pages of four, seven of the sound and four of the effects (dinghy.c draws and
+ * turns them) */
 enum {
     GQ_TYPE_A, GQ_TONE_A, GQ_MOTION_A, GQ_SEED_A,
     GQ_TYPE_B, GQ_TONE_B, GQ_MOTION_B, GQ_SEED_B,
     GQ_SIZE, GQ_DENS, GQ_POS, GQ_SPRD,
     GQ_MORPH, GQ_RAND, GQ_PITCH, GQ_SCAN,
-    GQ_CUT, GQ_RES, GQ_ATK, GQ_REL,
+    GQ_FTYPE, GQ_CUT, GQ_RES, GQ_FDRIVE,         /* OberVave's filter */
+    GQ_KTRK, GQ_FMORPH, GQ_ATK, GQ_REL,
     GQ_LRATE, GQ_LWAVE, GQ_LDEPTH, GQ_LDEST,
+    GQ_CRATE, GQ_CDEPTH, GQ_CMIX, GQ_CNONE,      /* OberVave's effects */
+    GQ_DTIME, GQ_DFB, GQ_DTONE, GQ_DMIX,
+    GQ_RSIZE, GQ_RDAMP, GQ_RPRE, GQ_RMIX,
+    GQ_VTYPE, GQ_VAMT, GQ_VTONE, GQ_VMIX,
     GQ_N
 };
+#define GQ_FX0 GQ_CRATE                         /* the first knob of the effects' pages */
 /* how a value reads on the screen (gq_text) */
-enum { GF_INT, GF_TYPE, GF_PCT, GF_SIGNED, GF_SEMI, GF_SIZE, GF_DENS, GF_CUT, GF_TIME, GF_LFOHZ, GF_LWAVE, GF_LDEST };
+enum { GF_INT, GF_TYPE, GF_PCT, GF_SIGNED, GF_SEMI, GF_SIZE, GF_DENS, GF_CUT, GF_TIME, GF_LFOHZ, GF_LWAVE, GF_LDEST,
+       GF_FTYPE, GF_VTYPE, GF_DLYMS, GF_NONE };
 #define GL_NWAVE 5u
 static const char *const GL_WAVE_NAMES[GL_NWAVE] = {"SINE", "TRI", "SAW", "SQUARE", "S&H"};
 enum { GD_MORPH, GD_POS, GD_SIZE, GD_DENS, GD_SPRD, GD_PITCH, GD_CUT, GD_N };
 static const char *const GL_DEST_NAMES[GD_N] = {"MORPH", "POS", "SIZE", "DENS", "SPRD", "PITCH", "CUT"};
+static const char *const FTYPE_NAMES[NFTYPE] = {"LP12", "HP12", "BP12", "NOTCH", "LP24", "SEM"};
+static const char *const VTYPE_NAMES[NDV] = {"OVERDR", "DIST", "FUZZ", "CRUSH"};
 typedef struct { const char *name; int8_t min, max, def; uint8_t fmt; } gq_desc_t;
 static const gq_desc_t GQ[GQ_N] = {
     {"TYPE", 0, GS_NTYPE - 1, GT_DRONE, GF_TYPE}, {"TONE", 0, 127, 64, GF_INT}, {"MOTION", 0, 127, 64, GF_INT},
@@ -47,9 +59,16 @@ static const gq_desc_t GQ[GQ_N] = {
     {"SIZE", 0, 127, 92, GF_SIZE}, {"DENS", 0, 127, 88, GF_DENS}, {"POS", 0, 127, 50, GF_PCT}, {"SPRD", 0, 127, 40, GF_PCT},
     {"MORPH", 0, 127, 40, GF_PCT}, {"RAND", 0, 127, 14, GF_PCT}, {"PITCH", -24, 24, 0, GF_SEMI},
     {"SCAN", -64, 63, 12, GF_SIGNED},
-    {"CUT", 0, 127, 100, GF_CUT}, {"RES", 0, 127, 20, GF_PCT}, {"ATK", 0, 127, 30, GF_TIME}, {"REL", 0, 127, 84, GF_TIME},
+    {"TYPE", 0, NFTYPE - 1, F_LP12, GF_FTYPE}, {"CUT", 0, 127, 100, GF_CUT}, {"RES", 0, 127, 20, GF_PCT},
+    {"DRIVE", 0, 127, 0, GF_PCT},
+    {"KTRK", 0, 127, 64, GF_PCT}, {"SEM", 0, 127, 64, GF_PCT}, {"ATK", 0, 127, 30, GF_TIME}, {"REL", 0, 127, 84, GF_TIME},
     {"RATE", 0, 127, 40, GF_LFOHZ}, {"WAVE", 0, GL_NWAVE - 1, 0, GF_LWAVE}, {"DEPTH", 0, 127, 0, GF_PCT},
     {"DEST", 0, GD_N - 1, GD_MORPH, GF_LDEST},
+    {"RATE", 0, 127, 30, GF_PCT}, {"DEPTH", 0, 127, 40, GF_PCT}, {"MIX", 0, 127, 0, GF_PCT}, {0, 0, 0, 0, GF_NONE},
+    {"TIME", 0, 127, 80, GF_DLYMS}, {"FEEDBK", 0, 127, 50, GF_PCT}, {"TONE", 0, 127, 70, GF_PCT}, {"MIX", 0, 127, 0, GF_PCT},
+    {"SIZE", 0, 127, 100, GF_PCT}, {"DAMP", 0, 127, 75, GF_PCT}, {"PRE", 0, 127, 30, GF_PCT}, {"MIX", 0, 127, 0, GF_PCT},
+    {"TYPE", 0, NDV - 1, DV_OVERDRIVE, GF_VTYPE}, {"AMOUNT", 0, 127, 60, GF_PCT}, {"TONE", 0, 127, 90, GF_PCT},
+    {"MIX", 0, 127, 0, GF_PCT},
 };
 static volatile int8_t gp_p[GQ_N];
 static void gp_defaults(void)
@@ -65,21 +84,33 @@ static void gp_defaults(void)
 static const char *const GP_FACT_NAMES[GP_NFACT] = {
     "CLOUD PAD", "SHIMMER", "BREATH PAD", "FROZEN", "STRUM", "SWARM", "ACID DUST", "GLITCH"};
 static const int8_t GP_FACT[GP_NFACT][GQ_N] = {
-    /* A: TYPE TONE MOTION SEED | B: the same | SIZE DENS POS SPRD | MORPH RAND PITCH SCAN | CUT RES ATK REL | LFO */
-    {GT_DRONE, 64, 64, 0, GT_BELL, 64, 64, 0, 92, 88, 50, 40, 40, 14, 0, 12, 100, 20, 40, 90, 30, 0, 50, GD_MORPH},
-    {GT_BELL, 64, 64, 0, GT_BELL, 104, 104, 11, 70, 100, 30, 30, 64, 24, 12, 8, 110, 10, 30, 96, 45, 0, 70, GD_MORPH},
-    {GT_BREATH, 64, 64, 0, GT_VOWEL, 64, 20, 3, 92, 88, 50, 40, 64, 10, 0, 12, 96, 30, 50, 96, 25, 1, 40, GD_POS},
-    {GT_VOWEL, 28, 20, 3, GT_BREATH, 28, 20, 3, 108, 72, 40, 0, 0, 10, 0, 5, 92, 10, 60, 100, 20, 1, 30, GD_MORPH},
-    {GT_PLUCK, 64, 100, 0, GT_METAL, 64, 64, 0, 60, 80, 20, 30, 0, 10, 0, 0, 110, 0, 2, 70, 50, 2, 40, GD_MORPH},
-    {GT_CHIRP, 64, 64, 0, GT_SWEEP, 64, 64, 0, 48, 110, 50, 60, 64, 60, 0, 20, 120, 20, 20, 80, 60, 4, 50, GD_CUT},
-    {GT_SWEEP, 104, 104, 11, GT_PLUCK, 104, 104, 11, 30, 118, 50, 80, 40, 40, 0, -24, 127, 40, 5, 60, 70, 1, 70, GD_CUT},
-    {GT_METAL, 64, 64, 0, GT_DRONE, 64, 64, 0, 24, 112, 64, 100, 64, 90, 0, 0, 127, 0, 2, 50, 80, 3, 60, GD_SIZE},
+    /* A: TYPE TONE MOTION SEED | B | SIZE DENS POS SPRD | MORPH RAND PITCH SCAN | FILTER: TYPE CUT RES DRIVE |
+     * KTRK SEM ATK REL | LFO: RATE WAVE DEPTH DEST | CHORUS: RATE DEPTH MIX - | DELAY: TIME FB TONE MIX |
+     * REVERB: SIZE DAMP PRE MIX | DRIVE: TYPE AMOUNT TONE MIX */
+    {GT_DRONE, 64, 64, 0, GT_BELL, 64, 64, 0, 92, 88, 50, 40, 40, 14, 0, 12, F_LP12, 100, 20, 0, 64, 64, 40, 90,
+     30, 0, 50, GD_MORPH, 30, 40, 40, 0, 90, 45, 50, 25, 110, 70, 40, 60, DV_OVERDRIVE, 40, 90, 0},
+    {GT_BELL, 64, 64, 0, GT_BELL, 104, 104, 11, 70, 100, 30, 30, 64, 24, 12, 8, F_LP12, 110, 10, 0, 64, 64, 30, 96,
+     45, 0, 70, GD_MORPH, 40, 50, 30, 0, 100, 55, 60, 35, 120, 60, 50, 70, DV_OVERDRIVE, 40, 90, 0},
+    {GT_BREATH, 64, 64, 0, GT_VOWEL, 64, 20, 3, 92, 88, 50, 40, 64, 10, 0, 12, F_SEM, 96, 30, 0, 64, 30, 50, 96,
+     25, 1, 40, GD_POS, 25, 60, 50, 0, 80, 40, 40, 0, 115, 80, 40, 55, DV_OVERDRIVE, 40, 90, 0},
+    {GT_VOWEL, 28, 20, 3, GT_BREATH, 28, 20, 3, 108, 72, 40, 0, 0, 10, 0, 5, F_LP24, 92, 10, 0, 64, 64, 60, 100,
+     20, 1, 30, GD_MORPH, 30, 40, 0, 0, 110, 60, 40, 20, 127, 50, 60, 75, DV_OVERDRIVE, 40, 90, 0},
+    {GT_PLUCK, 64, 100, 0, GT_METAL, 64, 64, 0, 60, 80, 20, 30, 0, 10, 0, 0, F_LP12, 110, 0, 0, 80, 64, 2, 70,
+     50, 2, 40, GD_MORPH, 30, 40, 25, 0, 70, 50, 60, 40, 90, 70, 20, 30, DV_OVERDRIVE, 40, 90, 0},
+    {GT_CHIRP, 64, 64, 0, GT_SWEEP, 64, 64, 0, 48, 110, 50, 60, 64, 60, 0, 20, F_BP12, 120, 40, 20, 64, 64, 20, 80,
+     60, 4, 50, GD_CUT, 60, 70, 40, 0, 60, 60, 70, 40, 100, 70, 20, 35, DV_DIST, 50, 80, 20},
+    {GT_SWEEP, 104, 104, 11, GT_PLUCK, 104, 104, 11, 30, 118, 50, 80, 40, 40, 0, -24, F_LP24, 100, 70, 40, 90, 64, 5,
+     60, 70, 1, 70, GD_CUT, 30, 40, 0, 0, 75, 65, 50, 45, 80, 70, 20, 25, DV_DIST, 60, 70, 35},
+    {GT_METAL, 64, 64, 0, GT_DRONE, 64, 64, 0, 24, 112, 64, 100, 64, 90, 0, 0, F_HP12, 60, 30, 30, 64, 64, 2, 50,
+     80, 3, 60, GD_SIZE, 30, 40, 0, 0, 40, 70, 90, 40, 70, 60, 10, 25, DV_CRUSH, 70, 100, 50},
 };
 
 /* 2^(i/192), Q16: pitch ratios in 1/16 semitones, d16 >= -3072 (eng_grain.c's) */
 static uint32_t pow2_q16(int32_t d16);
 /* the LFO's rate, hundredths of a hertz: 0.05 .. 20 Hz */
 static uint32_t gl_hz100(int32_t v) { return (5u * pow2_q16(clamp(v, 0, 127) * 1307 / 100)) >> 16; }
+/* the delay's time in ms: 20 .. 550 */
+static uint32_t gp_dly_ms(int32_t v) { return (20u * pow2_q16(clamp(v, 0, 127) * 723 / 100)) >> 16; }
 /* an envelope time in ms: 2 ms .. 3.1 s */
 static uint32_t gp_env_ms(int32_t p) { return (2u * pow2_q16(clamp(p, 0, 127) * 16)) >> 16; }
 
@@ -120,8 +151,13 @@ static void gq_text(uint32_t q, int32_t v, char *s)
         if (u < 1000u) gq_put_frac(&p, u, 0); else gq_put_dec(&p, (u + 50u) / 100u);
         gq_put_str(&p, "/s");
         break;
-    case GF_CUT:                                /* 30 Hz .. 16 kHz: 30 x 2^(v x 9.06 / 127) */
-        u = (30u * pow2_q16(v * 13696 / 1000)) >> 16;
+    case GF_FTYPE: gq_put_str(&p, FTYPE_NAMES[clamp(v, 0, NFTYPE - 1)]); break;
+    case GF_VTYPE: gq_put_str(&p, VTYPE_NAMES[clamp(v, 0, NDV - 1)]); break;
+    case GF_NONE: break;
+    case GF_DLYMS: gq_put_dec(&p, gp_dly_ms(v)); gq_put_str(&p, "ms"); break;
+    case GF_CUT:                                /* OberVave's: MIDI note v + 8, 13 Hz .. 19.9 kHz */
+        u = (440u * pow2_q16((v - 61) * 16)) >> 16;
+        if (u > 19845u) u = 19845u;
         if (u < 1000u) { gq_put_dec(&p, u); gq_put_str(&p, "Hz"); }
         else { gq_put_frac(&p, u / 10u, 0); *p++ = 'k'; }
         break;
@@ -167,7 +203,7 @@ typedef struct {
     int32_t env;                 /* the amplitude, Q15 */
     int32_t next;                /* samples to the next grain */
     int32_t morph;               /* MORPH as the last block played it, Q15 (ramped a fetch to this one's) */
-    int32_t ic1, ic2;            /* the filter */
+    vflt_state_t flt;            /* the filter (OberVave's) */
     int32_t lvl;                 /* the velocity, Q15 */
     uint32_t age;
     uint8_t note;
@@ -333,12 +369,21 @@ static void gp_audio(int32_t *out, uint32_t n)
 {
     const int16_t *A = gbuf[gsel[0]], *B = gbuf[gsel[1]];
     int32_t acc[CTL], mono[CTL], atk = gp_env_step(gp_p[GQ_ATK]), rel = gp_env_step(gp_p[GQ_REL]);
-    int32_t kd = 8192 - gp_p[GQ_RES] * 60, scan = gp_scan_inc(gp_p[GQ_SCAN]);
-    int32_t ldep = gp_p[GQ_LDEPTH], ldst = gp_p[GQ_LDEST], lwave = gp_p[GQ_LWAVE];
+    int32_t scan = gp_scan_inc(gp_p[GQ_SCAN]), ft = gp_p[GQ_FTYPE], res = gp_p[GQ_RES], fm = gp_p[GQ_FMORPH];
+    int32_t ldep = gp_p[GQ_LDEPTH], ldst = gp_p[GQ_LDEST], lwave = gp_p[GQ_LWAVE], d = gp_p[GQ_FDRIVE], drv, ktrk;
     uint32_t b, i, v, k, nact = 0, iv, share, linc = gl_hz100(gp_p[GQ_LRATE]) * 31166u;   /* a block's turn of the LFO:
                                                   * 2^32 x 32 / (44100 x 100) a hundredth of a hertz */
     gp_eff_t e;
-    tsvf_t c;
+    vflt_t f;
+    static int32_t dry[256];                    /* the dry sound, mono: the effects' send */
+    static uint8_t fx_ready;
+    if (!fx_ready) {
+        fx_init();
+        fx_ready = 1;
+    }
+    if (n > 256u) n = 256u;                     /* (the platform's block: 256 frames) */
+    drv = 4096 + d * d * 15 * 4096 / 16129;     /* DRIVE into the filter: 1 .. 16 (OberVave's) */
+    ktrk = gp_p[GQ_KTRK] * 2;                   /* the cutoff follows the note: 127 = a semitone a semitone */
     e.rnd = gp_p[GQ_RAND];
     for (v = 0; v < GP_NV; v++)
         nact += gpv[v].gate || gpv[v].env;
@@ -366,7 +411,6 @@ static void gp_audio(int32_t *out, uint32_t n)
         e.morph = ((clamp(gp_p[GQ_MORPH] + (ldst == GD_MORPH ? lm : 0), 0, 127) << 8) * 16513 + 8192) >> 14;   /* B: 32768 */
         lpit = ldst == GD_PITCH ? lm * 3 : 0;  /* +-12 st */
         iv = (44100u * pow2_q16(-e.dens * 10)) >> 16;       /* the next grain: DENS a second, 1 .. 98 /s */
-        tsvf_coef_k(&c, (gp_p[GQ_CUT] + (ldst == GD_CUT ? lm : 0)) * 256, kd);
         gp_scan += (uint32_t)scan;
         e.pos_q8 = (int32_t)(((uint32_t)clamp((gp_p[GQ_POS] + (ldst == GD_POS ? lm : 0)) * 256, 0, 127 << 8)
                               + (gp_scan >> 17)) % (127u * 256u + 1u));
@@ -375,7 +419,7 @@ static void gp_audio(int32_t *out, uint32_t n)
             mono[i] = 0;
         for (v = 0; v < GP_NV; v++) {
             gp_voice_t *V = &gpv[v];
-            int32_t e0 = V->env, e1, de, ic1 = V->ic1, ic2 = V->ic2, m0;
+            int32_t e0 = V->env, e1, de, m0;
             uint32_t mine = 0;
             if (!V->gate && !V->env)
                 continue;
@@ -400,21 +444,29 @@ static void gp_audio(int32_t *out, uint32_t n)
                 if (mine < share)
                     gp_spawn(v, iv, &e, A, B);
             }
+            /* OberVave's filter, a voice: CUT (+ the LFO) as MIDI note CUT + 8, round C4 by KTRK */
+            vflt_set(&f, ft, (gp_p[GQ_CUT] + 8 + (ldst == GD_CUT ? lm : 0)) * 256 + ((int32_t)V->note - 60) * ktrk,
+                     res, fm, drv);
             for (i = 0; i < m; i++) {
-                int32_t x = clamp(acc[i], -65535, 65535) >> 1, y = tsvf_lp(&c, x, &ic1, &ic2);
-                mono[i] += mulq15(mulq15(clamp(y * 2, -32767, 32767), e0), V->lvl);
+                int32_t y = vflt_step(&f, &V->flt, clamp(acc[i], -65535, 65535));
+                mono[i] += mulq15(mulq15(clamp(y, -32767, 32767), e0), V->lvl);
                 e0 += de;
             }
-            V->ic1 = ic1;
-            V->ic2 = ic2;
             if (!V->gate && !V->env)                     /* the release ended */
                 gp_kill(v);
         }
         for (i = 0; i < m; i++) {
             out[2u * (b + i)] += mono[i];
             out[2u * (b + i) + 1u] += mono[i];
+            dry[b + i] = mono[i];
         }
     }
+    /* OberVave's effects: the drive beside the dry sound, then the chorus, the delay and the reverb, each fed by it */
+    fx_block(gp_p[GQ_CRATE], gp_p[GQ_CDEPTH], gp_p[GQ_CMIX], (int32_t)gp_dly_ms(gp_p[GQ_DTIME]), gp_p[GQ_DFB],
+             gp_p[GQ_DTONE], gp_p[GQ_DMIX], gp_p[GQ_RSIZE], gp_p[GQ_RDAMP], gp_p[GQ_RPRE], gp_p[GQ_RMIX], n);
+    drive_process(out, dry, n, (uint32_t)gp_p[GQ_VTYPE], (uint32_t)gp_p[GQ_VAMT], (uint32_t)gp_p[GQ_VTONE],
+                  (uint32_t)gp_p[GQ_VMIX]);
+    fx_process(out, dry, dry, dry, n);
 }
 
 /* ---- notes, from the main loop */
@@ -431,7 +483,7 @@ static void gp_note_on(uint32_t note, uint32_t vel)
     fm1_irq_off();
     if (!gpv[pick].env) {                       /* a fresh voice: no grains from before, the filter clear */
         gp_kill(pick);
-        gpv[pick].ic1 = gpv[pick].ic2 = 0;
+        memset(&gpv[pick].flt, 0, sizeof gpv[pick].flt);
         gpv[pick].morph = ((gp_p[GQ_MORPH] << 8) * 16513 + 8192) >> 14;
     }
     gpv[pick].note = (uint8_t)note;

@@ -5,7 +5,10 @@
  *
  *   keys       play the grains, 8 voices; the notes go out over USB-MIDI too, on the MIDI channel
  *   SELECT     the page: SRC A, SRC B (TYPE TONE MOTION SEED), GRAIN (SIZE DENS POS SPRD),
- *              GRAIN+ (MORPH RAND PITCH SCAN), FILT/ENV (CUT RES ATK REL), LFO (RATE WAVE DEPTH DEST)
+ *              GRAIN+ (MORPH RAND PITCH SCAN), FILTER (TYPE CUT RES DRIVE: OberVave's), ENV (KTRK SEM ATK REL),
+ *              LFO (RATE WAVE DEPTH DEST)
+ *   FX         the effects' pages and back (lit there): CHORUS (RATE DEPTH MIX), DELAY (TIME FEEDBK TONE MIX),
+ *              REVERB (SIZE DAMP PRE MIX), DRIVE (TYPE AMOUNT TONE MIX): OberVave's
  *   KNOB 1..4  the page's four values; the faster the turn, the bigger the step
  *   PRESETS    the sound: the 8 factory presets, then the user presets saved; MIDI program change too
  *   SAVE       save the sound: PRESETS picks the user slot (1..16), SAVE again writes it, HOME cancels
@@ -35,9 +38,11 @@ static void app_audio(int32_t *out, uint32_t n)
     gp_audio(out, n);
 }
 
-/* ---- the pages: six of four knobs */
-#define NPAGE 6u
-static const char *const PAGE_NAME[NPAGE] = {"SRC A", "SRC B", "GRAIN", "GRAIN+", "FILT/ENV", "LFO"};
+/* ---- the pages: seven of the sound, then four of the effects (FX goes there and back), four knobs each */
+#define NPAGE 11u
+#define FX_PAGE0 (GQ_FX0 / 4u)
+static const char *const PAGE_NAME[NPAGE] = {"SRC A", "SRC B", "GRAIN", "GRAIN+", "FILTER", "ENV", "LFO",
+                                             "FX CHORUS", "FX DELAY", "FX REVERB", "FX DRIVE"};
 
 /* ---- the presets: the factory ones (grain.c), then NUSER the user saves (blob 0) */
 #define NUSER 16u
@@ -129,6 +134,7 @@ static void draw_cells(uint32_t pg)
         uint32_t q = pg * 4u + c;
         int32_t x0 = (int32_t)c * 60, v = gp_p[q], w;
         char s[12];
+        if (!GQ[q].name) continue;              /* (a page with three knobs) */
         gq_text(q, v, s);
         cv_text(x0 + (60 - text_w(&FONT_S, GQ[q].name)) / 2, 2, &FONT_S, GQ[q].name, C_OFF);
         cv_text(x0 + (60 - text_w(&FONT_S, s)) / 2, 22, &FONT_S, s, C_WHITE);
@@ -292,6 +298,7 @@ static void app_main(void)
     uint32_t prev = 0, k, t_change = 0, dirty = 0, status_drawn = ~0u, midi_drawn = ~0u, preset_drawn = ~0u;
     uint32_t page_drawn = ~0u, cells_drawn = ~0u, wave_page = ~0u, wave_renders = ~0u, wave_morph = ~0u;
     uint32_t wave_t = 0, wave_live = 1, wave_pos = ~0u, saving = 0, save_to = 0, save_drawn = ~0u;
+    uint32_t sound_pg = 0, fx_pg = FX_PAGE0;    /* the page left on either side of FX */
     uint8_t held[27] = {0};                     /* the note each key plays */
 #if BOARD_SMK37
     static const uint8_t WHITE[16] = {0, 2, 4, 6, 7, 9, 11, 12, 14, 16, 18, 19, 21, 23, 24, 26};   /* white key -> key */
@@ -407,9 +414,17 @@ static void app_main(void)
                 if (set.cur >= GP_NFACT) save_to = set.cur - GP_NFACT;
                 else while (save_to < NUSER - 1u && user.used[save_to]) save_to++;
             }
-            if ((e = fm1_enc_take(ENC_SELECT)) != 0) {    /* the page */
-                int32_t c = (int32_t)set.page + e;
-                set.page = (uint8_t)(c < 0 ? 0 : c >= (int32_t)NPAGE ? NPAGE - 1u : (uint32_t)c);
+            if (b & (1u << BTN_FX)) {           /* FX: to the effects' pages and back, each where it was left */
+                if (pg < FX_PAGE0) { sound_pg = pg; set.page = (uint8_t)fx_pg; }
+                else { fx_pg = pg; set.page = (uint8_t)sound_pg; }
+                pg = set.page;
+                dirty = 1;
+                t_change = fm1_ms;
+            }
+            if ((e = fm1_enc_take(ENC_SELECT)) != 0) {    /* the page, among the sound's or the effects' */
+                int32_t c = (int32_t)set.page + e, lo = pg < FX_PAGE0 ? 0 : (int32_t)FX_PAGE0;
+                int32_t hi = pg < FX_PAGE0 ? (int32_t)FX_PAGE0 - 1 : (int32_t)NPAGE - 1;
+                set.page = (uint8_t)(c < lo ? lo : c > hi ? hi : c);
                 pg = set.page;
                 dirty = 1;
                 t_change = fm1_ms;
@@ -417,8 +432,9 @@ static void app_main(void)
             for (k = 0; k < 4u; k++)            /* the page's values */
                 if ((e = fm1_enc_take(ENC_KNOB1 + k)) != 0) {
                     uint32_t q = pg * 4u + k;
-                    int32_t v, lo = GQ[q].min, hi = GQ[q].max;
-                    if (GQ[q].fmt == GF_TYPE || GQ[q].fmt == GF_LWAVE || GQ[q].fmt == GF_LDEST)   /* a list: round it, a step a detent */
+                    int32_t v, lo = GQ[q].min, hi = GQ[q].max, fmt = GQ[q].fmt;
+                    if (fmt == GF_NONE) continue;
+                    if (fmt == GF_TYPE || fmt == GF_LWAVE || fmt == GF_LDEST || fmt == GF_FTYPE || fmt == GF_VTYPE)   /* a list: round it, a step a detent */
                         v = (int32_t)(((uint32_t)(gp_p[q] + e % (hi + 1) + (hi + 1))) % (uint32_t)(hi + 1));
                     else
                         v = gp_p[q] + enc_fast(k, e);
@@ -443,6 +459,7 @@ static void app_main(void)
         fm1_led_key(BTN_OCT_DOWN, oct < 0);
         fm1_led_key(BTN_OCT_UP, oct > 0);
         fm1_led_key(BTN_SAVE, saving);
+        fm1_led_key(BTN_FX, set.page >= FX_PAGE0);
         fm1_led_key(BTN_PLAY, clk_run || (clk_bpm && fm1_ms - clk_beat_ms < 80u));   /* lit: running; a blink a beat */
 #if BOARD_SMK37
         for (k = 0; k < 16u; k++) {             /* a pad glows orange while its key sounds */

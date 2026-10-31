@@ -1,6 +1,6 @@
 # Kayak's GRAIN on the host: the splash, a chord, a source changed while it plays (a render and its swap), the pages
-# turned, the grain knobs and the LFO moved, a release, a preset chosen, saved into a user slot.
-# tests/run_host.sh tests/scripts/grain.txt
+# turned, the grain knobs moved, the effects' pages (FX) and their MIX knobs, a release, the LFO, a preset chosen and
+# saved into a user slot. tests/run_host.sh tests/scripts/grain.txt
 700 shot
 1800 keys 0x4880
 2200 shot
@@ -10,11 +10,18 @@
 2800 enc 2 -40
 2900 enc 4 30
 3100 shot
-3300 enc 0 3
-3400 enc 4 60
-3500 enc 2 30
+3200 btn 2
+3300 enc 0 2
+3400 shot
+3500 enc 5 -127
+3600 enc 0 -1
+3700 enc 5 -127
 3800 shot
+3900 btn 2
 4000 keys 0
+4100 enc 0 4
+4200 enc 4 60
+4500 shot
 5000 enc 6 2
 5200 shot
 5300 btn 9

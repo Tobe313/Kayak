@@ -21,14 +21,15 @@ run() { echo "== $1"; shift; "$@" || fail=1; }
 run "FM-1 app on the host: the default script plays, screens and sound" sh tests/run_host.sh
 run "SMK-37 app on the host: the default script" env BOARD=smk37 sh tests/run_host.sh
 run "FM-1 MIDI: USB, the TRS jack, a clock, the channel" sh tests/run_host.sh tests/scripts/midi.txt
-run "FM-1 GRAIN: a chord, a source rendered and swapped in while it plays, the pages and knobs" sh tests/run_host.sh tests/scripts/grain.txt
+run "FM-1 GRAIN: a chord, a source rendered and swapped in while it plays, the pages, knobs and effects" sh tests/run_host.sh tests/scripts/grain.txt
 run "FM-1 GRAIN: the chord sounds, unclipped, and the release ends in silence" python3 - <<'PY'
 import array, sys, wave
 w = wave.open("build/host/kayak.wav")
 a = array.array("h", w.readframes(w.getnframes()))
 fs = w.getframerate()
 peak = max(abs(x) for x in a[2 * fs * 2:2 * fs * 4])                 # 2 .. 4 s: the chord held (after the splash)
-tail = max(abs(x) for x in a[2 * fs * 48 // 10:])                    # 4.8 s on: after the release
+tail = max(abs(x) for x in a[2 * fs * 46 // 10:2 * fs * 495 // 100])  # 4.6 .. 4.95 s: after the release (the
+                                                                     # script set the reverb's and the delay's MIX to 0)
 print(f"GRAIN: peak {peak} while held, {tail} after the release")
 sys.exit(0 if 1000 < peak < 32767 and tail < 50 else 1)
 PY
