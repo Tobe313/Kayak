@@ -5,15 +5,18 @@
  *
  *   keys       play the grains, 8 voices; the notes go out over USB-MIDI too, on the MIDI channel
  *   SELECT     the page: SRC A, SRC B (TYPE TONE MOTION SEED), GRAIN (SIZE DENS POS SPRD),
- *              GRAIN+ (MORPH RAND PITCH SCAN), FILT/ENV (CUT RES ATK REL)
- *   KNOB 1..4  the page's four values (kept in flash)
- *   OCT- OCT+  the octave (kept in flash)
- *   PRESETS    the MIDI channel: OMNI (in: all, out: 1) or 1..16 (kept in flash)
+ *              GRAIN+ (MORPH RAND PITCH SCAN), FILT/ENV (CUT RES ATK REL), LFO (RATE WAVE DEPTH DEST)
+ *   KNOB 1..4  the page's four values; the faster the turn, the bigger the step
+ *   PRESETS    the sound: the 8 factory presets, then the user presets saved; MIDI program change too
+ *   SAVE       save the sound: PRESETS picks the user slot (1..16), SAVE again writes it, HOME cancels
+ *   ALGORITHM  the MIDI channel: OMNI (in: all, out: 1) or 1..16
+ *   OCT- OCT+  the octave
  *   MASTER     the volume (platform.c)
  *   MIDI in    notes from USB or the TRS jack play the grains, with their velocity; a MIDI clock shows its tempo
  *              and blinks PLAY on the beat, START / STOP light it
  *   SMK-37     the keys with velocity, the outer keys too, the pads (white keys F3..G5, lit while they sound), the
  *              pitch wheel bends +-2 semitones
+ * The sound being played, the octave, the channel and the page are kept in flash (2 s after a change, when silent).
  *
  * Rules of the road (the chip has no FPU and no libgcc): integers only, no float, no 64-bit division.
  * tests/host.c runs this file on a computer: the screen as a PNG, the sound as a WAV.
@@ -32,12 +35,43 @@ static void app_audio(int32_t *out, uint32_t n)
     gp_audio(out, n);
 }
 
-/* ---- the pages: five of four knobs */
-#define NPAGE 5u
-static const char *const PAGE_NAME[NPAGE] = {"SRC A", "SRC B", "GRAIN", "GRAIN+", "FILT/ENV"};
+/* ---- the pages: six of four knobs */
+#define NPAGE 6u
+static const char *const PAGE_NAME[NPAGE] = {"SRC A", "SRC B", "GRAIN", "GRAIN+", "FILT/ENV", "LFO"};
 
-/* ---- the screen: the page, the wave the grains read with the grains on it, the four values, the octave */
+/* ---- the presets: the factory ones (grain.c), then NUSER the user saves (blob 0) */
+#define NUSER 16u
+#define NPRESET (GP_NFACT + NUSER)
+static struct { uint8_t used[NUSER]; int8_t p[NUSER][GQ_N]; } user;
+static uint32_t preset_ok(uint32_t i) { return i < GP_NFACT || (i < NPRESET && user.used[i - GP_NFACT]); }
+static void preset_load(uint32_t i)
+{
+    const int8_t *src = i < GP_NFACT ? GP_FACT[i] : user.p[i - GP_NFACT];
+    uint32_t k;
+    for (k = 0; k < GQ_N; k++)
+        gp_p[k] = (int8_t)clamp(src[k], GQ[k].min, GQ[k].max);
+}
+static void preset_name(uint32_t i, char *s)    /* "CLOUD PAD", "USER 3" */
+{
+    char *p = s;
+    if (i < GP_NFACT) gq_put_str(&p, GP_FACT_NAMES[i]);
+    else { gq_put_str(&p, "USER "); gq_put_dec(&p, i - GP_NFACT + 1u); }
+    *p = 0;
+}
+
+/* ---- the encoders: detents a second make the step (a slow turn 1, a fast one up to 8) */
+static int32_t enc_fast(uint32_t k, int32_t e)
+{
+    static uint32_t t_last[4];
+    uint32_t dt = fm1_ms - t_last[k], a = (uint32_t)(e < 0 ? -e : e), sp;
+    t_last[k] = fm1_ms;
+    sp = a * 1000u / (dt ? dt : 1u);
+    return e * (sp >= 40u ? 8 : sp >= 20u ? 4 : sp >= 10u ? 2 : 1);
+}
+
+/* ---- the screen: the preset, the page, the wave the grains read with the grains on it, the four values */
 #define C_ACC RGB(255, 140, 26)                 /* orange, as the update loader's screen */
+#define C_ACC_DIM RGB(128, 70, 13)
 #define C_SRC_A RGB(70, 150, 255)
 #define C_OFF RGB(90, 90, 90)
 #define C_DIMBAR RGB(45, 45, 45)
@@ -70,9 +104,8 @@ static void draw_wave(uint32_t pg)
     uint32_t x, k;
     uint16_t col = pg == 0u ? C_SRC_A : pg == 1u ? C_ACC : C_KEYW;
     cv_begin(240, 64, C_BLACK);
-    if (pg >= 2u) {                             /* where the grains start: POS (moved by SCAN), SPRD round it */
-        int32_t c = (int32_t)((((uint32_t)(gp_p[GQ_POS] << 8) + (gp_scan >> 17)) % (127u * 256u + 1u)) * 239u / (127u << 8));
-        int32_t s = gp_p[GQ_SPRD] * 240 / 127;
+    if (pg >= 2u) {                             /* where the grains start: POS (moved by SCAN, the LFO), SPRD round it */
+        int32_t c = gp_pos_view * 239 / (127 << 8), s = gp_p[GQ_SPRD] * 240 / 127;
         cv_rect(c - s / 2, 0, s, 64, C_DIMBAR);
         cv_rect(c, 0, 1, 64, C_WHITE);
     }
@@ -88,16 +121,6 @@ static void draw_wave(uint32_t pg)
     cv_blit(0, WV_Y);
 }
 
-static void fmt_val(char *s, int32_t v, int sign)
-{
-    char t[8];
-    uint32_t n = 0, u = (uint32_t)(v < 0 ? -v : v);
-    if (v < 0) *s++ = '-';
-    else if (sign && v > 0) *s++ = '+';
-    do { t[n++] = (char)('0' + u % 10u); u /= 10u; } while (u);
-    while (n) *s++ = t[--n];
-    *s = 0;
-}
 static void draw_cells(uint32_t pg)
 {
     uint32_t c;
@@ -105,17 +128,41 @@ static void draw_cells(uint32_t pg)
     for (c = 0; c < 4u; c++) {
         uint32_t q = pg * 4u + c;
         int32_t x0 = (int32_t)c * 60, v = gp_p[q], w;
-        char s[8];
-        const char *val = s;
-        if (q == GQ_TYPE_A || q == GQ_TYPE_B) val = GS_TYPE_NAMES[v];
-        else fmt_val(s, v, q == GQ_PITCH || q == GQ_SCAN);
+        char s[12];
+        gq_text(q, v, s);
         cv_text(x0 + (60 - text_w(&FONT_S, GQ[q].name)) / 2, 2, &FONT_S, GQ[q].name, C_OFF);
-        cv_text(x0 + (60 - text_w(&FONT_S, val)) / 2, 22, &FONT_S, val, C_WHITE);
+        cv_text(x0 + (60 - text_w(&FONT_S, s)) / 2, 22, &FONT_S, s, C_WHITE);
         w = (v - GQ[q].min) * 48 / (GQ[q].max - GQ[q].min);
         cv_rect(x0 + 6, 46, 48, 6, C_DIMBAR);
         cv_rect(x0 + 6, 46, w, 6, c & 1u ? C_ACC : C_SRC_A);
     }
     cv_blit(0, CELL_Y);
+}
+
+static void draw_preset(uint32_t i, uint32_t mod)   /* the sound's name; " *" once a knob changed it */
+{
+    char s[24], *p;
+    preset_name(i, s);
+    p = s;
+    while (*p) p++;
+    if (mod) gq_put_str(&p, " *");
+    *p = 0;
+    draw_text_box(0, 6, 240, &FONT_S, s, C_ACC, 1);
+}
+
+static void draw_save(uint32_t to)              /* the save screen: the slot, what is in it, the way out */
+{
+    char s[24], *p = s;
+    gq_put_str(&p, "TO USER ");
+    gq_put_dec(&p, to + 1u);
+    *p = 0;
+    cv_begin(240, 56, C_BLACK);
+    cv_text((240 - text_w(&FONT_S, s)) / 2, 6, &FONT_S, s, C_WHITE);
+    p = user.used[to] ? "REPLACES WHAT IS THERE" : "EMPTY";
+    cv_text((240 - text_w(&FONT_S, p)) / 2, 30, &FONT_S, p, C_OFF);
+    cv_blit(0, CELL_Y);
+    draw_text_box(0, 204, 240, &FONT_S, "PRESETS: SLOT  SAVE: OK", C_ACC, 1);
+    draw_text_box(0, 222, 240, &FONT_S, "HOME: CANCEL", C_OFF, 1);
 }
 
 static void draw_status(int32_t oct, uint32_t ch)
@@ -154,33 +201,33 @@ static void draw_midi(uint32_t src, uint32_t bpm, uint32_t running)   /* where n
 #define ART_PX 4u
 static const char *const KAYAK_ART[ART_H] = {
     "..........................................####..",
-    "...........................#.............#####..",
+    "..........................###............#####..",
     ".........................#####..........#####...",
     ".........................#####.........#####....",
-    "........................#######.......#####.....",
+    ".........................#####........#####.....",
     ".........................#####.......#####......",
-    ".........................#####.....###..........",
-    "...........................#......###...........",
+    "..........................###.....###...........",
+    "..................................###...........",
     ".........................####...###.............",
     ".........................#########..............",
     "........................#########...............",
     "........................#######.................",
     "........................######..................",
-    ".......................######...................",
+    "........................#####...................",
     ".......................#####..................#.",
-    "......................######............######..",
-    ".....................#######......###########...",
+    ".......................#####...........#######..",
+    "......................######.....############...",
     "....................########################....",
-    "...................##..####################.....",
-    ".................###..###################.......",
-    "..........####..###.##################..........",
-    "....########..###..#############................",
-    ".###############..##########....................",
-    "...###########..#####...........................",
-    ".......#.#####..................................",
+    "...................#######################......",
+    "..............###########################.......",
+    ".......#############################............",
+    ".#############################..................",
+    "...#####################........................",
+    "........#######.................................",
+    "..........####..................................",
+    ".........#####..................................",
     "........#####...................................",
-    ".......#####....................................",
-    ".......####.....................................",
+    "........####....................................",
 };
 static void splash(void)
 {
@@ -201,12 +248,12 @@ static void splash(void)
     }
     cv_blit(0, 24u + ART_H * ART_PX + 6u);
     draw_text_box(0, 172, 240, &FONT_L, "KAYAK", C_ACC, 1);
-    draw_text_box(0, 214, 240, &FONT_S, "GRAIN SYNTH  v" APP_VER, RGB(128, 70, 13), 1);
+    draw_text_box(0, 214, 240, &FONT_S, "GRAIN SYNTH  v" APP_VER, C_ACC_DIM, 1);
 }
 
 /* ---- MIDI in: from the main loop, and from app_idle while the screen draws (idle_ok) */
-static struct { uint8_t oct, ch, page; int8_t p[GQ_N]; } set;   /* what survives a power-off (up to SECTOR_MAX bytes) */
-static uint32_t idle_ok, midi_src, clk_n, clk_t0, clk_bpm, clk_run, clk_beat_ms;
+static struct { uint8_t oct, ch, page, cur, mod; int8_t p[GQ_N]; } set;   /* what survives a power-off */
+static uint32_t idle_ok, midi_src, clk_n, clk_t0, clk_bpm, clk_run, clk_beat_ms, pc_want = ~0u;
 
 static void midi_in(void)
 {
@@ -232,6 +279,7 @@ static void midi_in(void)
         if (set.ch && (st & 15u) != set.ch - 1u) continue;      /* not our channel */
         if (ty == 0x90u && d2) { gp_note_on(d1, d2); midi_src = (uint32_t)src; }
         else if (ty == 0x80u || ty == 0x90u) gp_note_off(d1);
+        else if (ty == 0xC0u) pc_want = d1;     /* a program change: the preset, from the main loop */
     }
 }
 static void app_idle(void)
@@ -241,9 +289,9 @@ static void app_idle(void)
 
 static void app_main(void)
 {
-    uint32_t prev = 0, k, t_change = 0, dirty = 0, status_drawn = ~0u, midi_drawn = ~0u;
+    uint32_t prev = 0, k, t_change = 0, dirty = 0, status_drawn = ~0u, midi_drawn = ~0u, preset_drawn = ~0u;
     uint32_t page_drawn = ~0u, cells_drawn = ~0u, wave_page = ~0u, wave_renders = ~0u, wave_morph = ~0u;
-    uint32_t wave_t = 0, wave_live = 1, wave_pos = ~0u;
+    uint32_t wave_t = 0, wave_live = 1, wave_pos = ~0u, saving = 0, save_to = 0, save_drawn = ~0u;
     uint8_t held[27] = {0};                     /* the note each key plays */
 #if BOARD_SMK37
     static const uint8_t WHITE[16] = {0, 2, 4, 6, 7, 9, 11, 12, 14, 16, 18, 19, 21, 23, 24, 26};   /* white key -> key */
@@ -251,10 +299,13 @@ static void app_main(void)
     smk_pw_t wheel = {0};
     smk_pad_events = 1;                         /* the pads as events (smk_pad_take): they play here, lit while they sound */
 #endif
-    gp_defaults();
-    if (settings_load(&set, sizeof set) || (int8_t)set.oct < -2 || (int8_t)set.oct > 2 || set.ch > 16u || set.page >= NPAGE)
-        set.oct = 0, set.ch = 0, set.page = 0;
-    else
+    if (blob_load(0, &user, sizeof user))       /* the user presets */
+        for (k = 0; k < NUSER; k++) user.used[k] = 0;
+    if (settings_load(&set, sizeof set) || (int8_t)set.oct < -2 || (int8_t)set.oct > 2 || set.ch > 16u
+        || set.page >= NPAGE || !preset_ok(set.cur)) {
+        set.oct = 0, set.ch = 0, set.page = 0, set.cur = 0, set.mod = 0;
+        preset_load(0);
+    } else
         for (k = 0; k < GQ_N; k++)              /* (a value out of its range: its default) */
             gp_p[k] = set.p[k] < GQ[k].min || set.p[k] > GQ[k].max ? GQ[k].def : set.p[k];
 
@@ -264,7 +315,6 @@ static void app_main(void)
         grain_poll();
     }
     lcd_fill(0, 0, 240, 240, C_BLACK);
-    draw_text_box(0, 6, 240, &FONT_S, APP_NAME "  GRAIN  v" APP_VER, C_ACC, 1);
 
     for (;;) {
         uint32_t keys, down, up, rel, b, lit = 0, out_ch = set.ch ? set.ch - 1u : 0u, st, pg = set.page;
@@ -307,29 +357,77 @@ static void app_main(void)
         b = fm1_input_edges(&rel);              /* buttons pressed since the last call (bit = button id) */
         if (b & (1u << BTN_OCT_DOWN) && oct > -2) { set.oct = (uint8_t)(oct - 1); dirty = 1; t_change = fm1_ms; }
         if (b & (1u << BTN_OCT_UP) && oct < 2) { set.oct = (uint8_t)(oct + 1); dirty = 1; t_change = fm1_ms; }
-        if ((e = fm1_enc_take(ENC_PRESETS)) != 0) {   /* detents turned since the last call */
+        if ((e = fm1_enc_take(ENC_ALGORITHM)) != 0) {   /* the MIDI channel */
             int32_t c = (int32_t)set.ch + e;
             set.ch = (uint8_t)(c < 0 ? 0 : c > 16 ? 16 : c);
             dirty = 1;
             t_change = fm1_ms;
         }
-        if ((e = fm1_enc_take(ENC_SELECT)) != 0) {    /* the page */
-            int32_t c = (int32_t)set.page + e;
-            set.page = (uint8_t)(c < 0 ? 0 : c >= (int32_t)NPAGE ? NPAGE - 1u : (uint32_t)c);
-            pg = set.page;
-            dirty = 1;
-            t_change = fm1_ms;
-        }
-        for (k = 0; k < 4u; k++)                /* the page's values: a fast turn moves four a detent */
-            if ((e = fm1_enc_take(ENC_KNOB1 + k)) != 0) {
-                uint32_t q = pg * 4u + k;
-                int32_t v = gp_p[q] + (e > 2 || e < -2 ? e * 4 : e), lo = GQ[q].min, hi = GQ[q].max;
-                if (q == GQ_TYPE_A || q == GQ_TYPE_B)
-                    v = (int32_t)(((uint32_t)(gp_p[q] + e + 8 * GS_NTYPE)) % GS_NTYPE);   /* the TYPE: round the eight */
-                gp_p[q] = (int8_t)(v < lo ? lo : v > hi ? hi : v);
+        e = fm1_enc_take(ENC_PRESETS);
+        if (saving) {                           /* the save screen: PRESETS the slot, SAVE writes, HOME cancels */
+            save_to = (uint32_t)clamp((int32_t)save_to + e, 0, (int32_t)NUSER - 1);
+            if (b & (1u << BTN_SAVE)) {
+                for (k = 0; k < GQ_N; k++) user.p[save_to][k] = gp_p[k];
+                user.used[save_to] = 1;
+                blob_save(0, &user, sizeof user);   /* (an erase holds the sound for some 50 ms) */
+                set.cur = (uint8_t)(GP_NFACT + save_to);
+                set.mod = 0;
+                saving = 0;
+                dirty = 1;
+                t_change = fm1_ms;
+            } else if (b & (1u << BTN_HOME))
+                saving = 0;
+            if (!saving)                        /* back to the pages: everything again */
+                page_drawn = cells_drawn = status_drawn = midi_drawn = preset_drawn = ~0u;
+        } else {
+            if (e) {                            /* the next preset there is, one a detent */
+                int32_t i = (int32_t)set.cur, d = e < 0 ? -1 : 1, n = e < 0 ? -e : e;
+                while (n--) {
+                    int32_t j = i + d;
+                    while (j >= 0 && j < (int32_t)NPRESET && !preset_ok((uint32_t)j)) j += d;
+                    if (j < 0 || j >= (int32_t)NPRESET) break;
+                    i = j;
+                }
+                if (i != (int32_t)set.cur) pc_want = (uint32_t)i;   /* (at either end: the sound stays as it is) */
+            }
+            if (pc_want != ~0u) {
+                if (preset_ok(pc_want)) {
+                    preset_load(pc_want);
+                    set.cur = (uint8_t)pc_want;
+                    set.mod = 0;
+                    dirty = 1;
+                    t_change = fm1_ms;
+                }
+                pc_want = ~0u;
+            }
+            if (b & (1u << BTN_SAVE)) {         /* the save screen: the slot of this sound, else the first empty one */
+                saving = 1;
+                save_drawn = ~0u;
+                save_to = 0;
+                if (set.cur >= GP_NFACT) save_to = set.cur - GP_NFACT;
+                else while (save_to < NUSER - 1u && user.used[save_to]) save_to++;
+            }
+            if ((e = fm1_enc_take(ENC_SELECT)) != 0) {    /* the page */
+                int32_t c = (int32_t)set.page + e;
+                set.page = (uint8_t)(c < 0 ? 0 : c >= (int32_t)NPAGE ? NPAGE - 1u : (uint32_t)c);
+                pg = set.page;
                 dirty = 1;
                 t_change = fm1_ms;
             }
+            for (k = 0; k < 4u; k++)            /* the page's values */
+                if ((e = fm1_enc_take(ENC_KNOB1 + k)) != 0) {
+                    uint32_t q = pg * 4u + k;
+                    int32_t v, lo = GQ[q].min, hi = GQ[q].max;
+                    if (GQ[q].fmt == GF_TYPE || GQ[q].fmt == GF_LWAVE || GQ[q].fmt == GF_LDEST)   /* a list: round it, a step a detent */
+                        v = (int32_t)(((uint32_t)(gp_p[q] + e % (hi + 1) + (hi + 1))) % (uint32_t)(hi + 1));
+                    else
+                        v = gp_p[q] + enc_fast(k, e);
+                    gp_p[q] = (int8_t)(v < lo ? lo : v > hi ? hi : v);
+                    set.mod = 1;
+                    dirty = 1;
+                    t_change = fm1_ms;
+                }
+        }
 
         midi_in();
         if (clk_bpm && fm1_ms - clk_t0 > 2000u) clk_bpm = 0, clk_run = 0;   /* the clock has stopped coming */
@@ -344,6 +442,7 @@ static void app_main(void)
             fm1_led_key(KEY_LED(k), lit >> k & 1u);
         fm1_led_key(BTN_OCT_DOWN, oct < 0);
         fm1_led_key(BTN_OCT_UP, oct > 0);
+        fm1_led_key(BTN_SAVE, saving);
         fm1_led_key(BTN_PLAY, clk_run || (clk_bpm && fm1_ms - clk_beat_ms < 80u));   /* lit: running; a blink a beat */
 #if BOARD_SMK37
         for (k = 0; k < 16u; k++) {             /* a pad glows orange while its key sounds */
@@ -354,11 +453,17 @@ static void app_main(void)
 #endif
 
         idle_ok = 1;                            /* the drawing below may read MIDI meanwhile (LCD_IDLE) */
-        if (pg != page_drawn) { page_drawn = pg; draw_text_box(0, 28, 240, &FONT_L, PAGE_NAME[pg], C_WHITE, 1); }
-        {
+        if ((st = set.cur | (uint32_t)set.mod << 8) != preset_drawn) { preset_drawn = st; draw_preset(set.cur, set.mod); }
+        if (saving) {
+            if (page_drawn != ~1u) { page_drawn = ~1u; draw_text_box(0, 28, 240, &FONT_L, "SAVE", C_ACC, 1); }
+            if ((st = save_to | (uint32_t)user.used[save_to] << 8) != save_drawn) { save_drawn = st; draw_save(save_to); }
+        } else {
             uint32_t sum = pg, live = 0;        /* the page's values, as one number to compare */
+            if (pg != page_drawn) { page_drawn = pg; draw_text_box(0, 28, 240, &FONT_L, PAGE_NAME[pg], C_WHITE, 1); }
             for (k = 0; k < 4u; k++) sum = sum * 131u + (uint8_t)gp_p[pg * 4u + k];
             if (sum != cells_drawn) { cells_drawn = sum; draw_cells(pg); }
+            if ((st = (uint32_t)(oct + 2) | (uint32_t)set.ch << 4) != status_drawn) { status_drawn = st; draw_status(oct, set.ch); }
+            if ((st = midi_src | clk_bpm << 2 | clk_run << 12) != midi_drawn) { midi_drawn = st; draw_midi(midi_src, clk_bpm, clk_run); }
             for (k = 0; k < GP_NG; k++) live |= gpg[k].owner;
             st = (uint32_t)(uint8_t)gp_p[GQ_MORPH];
             if (pg != wave_page || grs.renders != wave_renders || (pg >= 2u && st != wave_morph)) {
@@ -366,13 +471,11 @@ static void app_main(void)
                 wave_take(pg);
                 wave_live = 1;
             }
-            st = (uint32_t)(uint8_t)gp_p[GQ_POS] | (uint32_t)(uint8_t)gp_p[GQ_SPRD] << 8;
-            if (st != wave_pos) wave_pos = st, wave_live = 1;
-            if (live || gp_p[GQ_SCAN]) wave_live |= fm1_ms - wave_t >= 50u;   /* the grains move: 20 frames a second */
+            st = (uint32_t)gp_pos_view | (uint32_t)(uint8_t)gp_p[GQ_SPRD] << 16;
+            if (pg >= 2u && st != wave_pos) wave_pos = st, wave_live |= fm1_ms - wave_t >= 50u;
+            if (live) wave_live |= fm1_ms - wave_t >= 50u;   /* the grains move: 20 frames a second */
             if (wave_live) { wave_live = 0; wave_t = fm1_ms; draw_wave(pg); }
         }
-        if ((st = (uint32_t)(oct + 2) | (uint32_t)set.ch << 4) != status_drawn) { status_drawn = st; draw_status(oct, set.ch); }
-        if ((st = midi_src | clk_bpm << 2 | clk_run << 12) != midi_drawn) { midi_drawn = st; draw_midi(midi_src, clk_bpm, clk_run); }
         idle_ok = 0;
 
         if (dirty && gp_quiet() && !grs.busy && fm1_ms - t_change > 2000u) {   /* 2 s after the change, when silent */

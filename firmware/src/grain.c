@@ -22,22 +22,34 @@
 #define GP_RATE_Q16 ((GS_RATE << 16) / 44100u)
 #define GP_VOICE 12000           /* a voice's level at full velocity */
 
-/* ---- the knobs: 20 values, five pages of four (dinghy.c draws and turns them) */
+/* ---- the knobs: 24 values, six pages of four (dinghy.c draws and turns them) */
 enum {
     GQ_TYPE_A, GQ_TONE_A, GQ_MOTION_A, GQ_SEED_A,
     GQ_TYPE_B, GQ_TONE_B, GQ_MOTION_B, GQ_SEED_B,
     GQ_SIZE, GQ_DENS, GQ_POS, GQ_SPRD,
     GQ_MORPH, GQ_RAND, GQ_PITCH, GQ_SCAN,
     GQ_CUT, GQ_RES, GQ_ATK, GQ_REL,
+    GQ_LRATE, GQ_LWAVE, GQ_LDEPTH, GQ_LDEST,
     GQ_N
 };
-typedef struct { const char *name; int8_t min, max, def; } gq_desc_t;
+/* how a value reads on the screen (gq_text) */
+enum { GF_INT, GF_TYPE, GF_PCT, GF_SIGNED, GF_SEMI, GF_SIZE, GF_DENS, GF_CUT, GF_TIME, GF_LFOHZ, GF_LWAVE, GF_LDEST };
+#define GL_NWAVE 5u
+static const char *const GL_WAVE_NAMES[GL_NWAVE] = {"SINE", "TRI", "SAW", "SQUARE", "S&H"};
+enum { GD_MORPH, GD_POS, GD_SIZE, GD_DENS, GD_SPRD, GD_PITCH, GD_CUT, GD_N };
+static const char *const GL_DEST_NAMES[GD_N] = {"MORPH", "POS", "SIZE", "DENS", "SPRD", "PITCH", "CUT"};
+typedef struct { const char *name; int8_t min, max, def; uint8_t fmt; } gq_desc_t;
 static const gq_desc_t GQ[GQ_N] = {
-    {"TYPE", 0, GS_NTYPE - 1, GT_DRONE}, {"TONE", 0, 127, 64}, {"MOTION", 0, 127, 64}, {"SEED", 0, 127, 0},
-    {"TYPE", 0, GS_NTYPE - 1, GT_BELL}, {"TONE", 0, 127, 64}, {"MOTION", 0, 127, 64}, {"SEED", 0, 127, 0},
-    {"SIZE", 0, 127, 92}, {"DENS", 0, 127, 88}, {"POS", 0, 127, 50}, {"SPRD", 0, 127, 40},
-    {"MORPH", 0, 127, 40}, {"RAND", 0, 127, 14}, {"PITCH", -24, 24, 0}, {"SCAN", -64, 63, 12},
-    {"CUT", 0, 127, 100}, {"RES", 0, 127, 20}, {"ATK", 0, 127, 30}, {"REL", 0, 127, 84},
+    {"TYPE", 0, GS_NTYPE - 1, GT_DRONE, GF_TYPE}, {"TONE", 0, 127, 64, GF_INT}, {"MOTION", 0, 127, 64, GF_INT},
+    {"SEED", 0, 127, 0, GF_INT},
+    {"TYPE", 0, GS_NTYPE - 1, GT_BELL, GF_TYPE}, {"TONE", 0, 127, 64, GF_INT}, {"MOTION", 0, 127, 64, GF_INT},
+    {"SEED", 0, 127, 0, GF_INT},
+    {"SIZE", 0, 127, 92, GF_SIZE}, {"DENS", 0, 127, 88, GF_DENS}, {"POS", 0, 127, 50, GF_PCT}, {"SPRD", 0, 127, 40, GF_PCT},
+    {"MORPH", 0, 127, 40, GF_PCT}, {"RAND", 0, 127, 14, GF_PCT}, {"PITCH", -24, 24, 0, GF_SEMI},
+    {"SCAN", -64, 63, 12, GF_SIGNED},
+    {"CUT", 0, 127, 100, GF_CUT}, {"RES", 0, 127, 20, GF_PCT}, {"ATK", 0, 127, 30, GF_TIME}, {"REL", 0, 127, 84, GF_TIME},
+    {"RATE", 0, 127, 40, GF_LFOHZ}, {"WAVE", 0, GL_NWAVE - 1, 0, GF_LWAVE}, {"DEPTH", 0, 127, 0, GF_PCT},
+    {"DEST", 0, GD_N - 1, GD_MORPH, GF_LDEST},
 };
 static volatile int8_t gp_p[GQ_N];
 static void gp_defaults(void)
@@ -47,12 +59,92 @@ static void gp_defaults(void)
         gp_p[i] = GQ[i].def;
 }
 
+/* ---- the factory presets: ChoralRoot's eight GRAIN sounds (eng_grain.c GRAIN_PP: the sources, the grain knobs,
+ * CUT RES), with an envelope and an LFO of Kayak's for each */
+#define GP_NFACT 8u
+static const char *const GP_FACT_NAMES[GP_NFACT] = {
+    "CLOUD PAD", "SHIMMER", "BREATH PAD", "FROZEN", "STRUM", "SWARM", "ACID DUST", "GLITCH"};
+static const int8_t GP_FACT[GP_NFACT][GQ_N] = {
+    /* A: TYPE TONE MOTION SEED | B: the same | SIZE DENS POS SPRD | MORPH RAND PITCH SCAN | CUT RES ATK REL | LFO */
+    {GT_DRONE, 64, 64, 0, GT_BELL, 64, 64, 0, 92, 88, 50, 40, 40, 14, 0, 12, 100, 20, 40, 90, 30, 0, 50, GD_MORPH},
+    {GT_BELL, 64, 64, 0, GT_BELL, 104, 104, 11, 70, 100, 30, 30, 64, 24, 12, 8, 110, 10, 30, 96, 45, 0, 70, GD_MORPH},
+    {GT_BREATH, 64, 64, 0, GT_VOWEL, 64, 20, 3, 92, 88, 50, 40, 64, 10, 0, 12, 96, 30, 50, 96, 25, 1, 40, GD_POS},
+    {GT_VOWEL, 28, 20, 3, GT_BREATH, 28, 20, 3, 108, 72, 40, 0, 0, 10, 0, 5, 92, 10, 60, 100, 20, 1, 30, GD_MORPH},
+    {GT_PLUCK, 64, 100, 0, GT_METAL, 64, 64, 0, 60, 80, 20, 30, 0, 10, 0, 0, 110, 0, 2, 70, 50, 2, 40, GD_MORPH},
+    {GT_CHIRP, 64, 64, 0, GT_SWEEP, 64, 64, 0, 48, 110, 50, 60, 64, 60, 0, 20, 120, 20, 20, 80, 60, 4, 50, GD_CUT},
+    {GT_SWEEP, 104, 104, 11, GT_PLUCK, 104, 104, 11, 30, 118, 50, 80, 40, 40, 0, -24, 127, 40, 5, 60, 70, 1, 70, GD_CUT},
+    {GT_METAL, 64, 64, 0, GT_DRONE, 64, 64, 0, 24, 112, 64, 100, 64, 90, 0, 0, 127, 0, 2, 50, 80, 3, 60, GD_SIZE},
+};
+
+/* 2^(i/192), Q16: pitch ratios in 1/16 semitones, d16 >= -3072 (eng_grain.c's) */
+static uint32_t pow2_q16(int32_t d16);
+/* the LFO's rate, hundredths of a hertz: 0.05 .. 20 Hz */
+static uint32_t gl_hz100(int32_t v) { return (5u * pow2_q16(clamp(v, 0, 127) * 1307 / 100)) >> 16; }
+/* an envelope time in ms: 2 ms .. 3.1 s */
+static uint32_t gp_env_ms(int32_t p) { return (2u * pow2_q16(clamp(p, 0, 127) * 16)) >> 16; }
+
+/* value v of knob q as the screen shows it, into s (12 bytes) */
+static void gq_put_dec(char **p, uint32_t u)
+{
+    char t[10];
+    uint32_t n = 0;
+    do { t[n++] = (char)('0' + u % 10u); u /= 10u; } while (u);
+    while (n) *(*p)++ = t[--n];
+}
+static void gq_put_str(char **p, const char *a) { while (*a) *(*p)++ = *a++; }
+static void gq_put_frac(char **p, uint32_t x100, int two)   /* hundredths as 1.23 (two) or 1.2 */
+{
+    gq_put_dec(p, x100 / 100u);
+    *(*p)++ = '.';
+    *(*p)++ = (char)('0' + x100 / 10u % 10u);
+    if (two) *(*p)++ = (char)('0' + x100 % 10u);
+}
+static void gq_text(uint32_t q, int32_t v, char *s)
+{
+    char *p = s;
+    uint32_t u;
+    switch (GQ[q].fmt) {
+    case GF_TYPE: gq_put_str(&p, GS_TYPE_NAMES[clamp(v, 0, GS_NTYPE - 1)]); break;
+    case GF_LWAVE: gq_put_str(&p, GL_WAVE_NAMES[clamp(v, 0, GL_NWAVE - 1)]); break;
+    case GF_LDEST: gq_put_str(&p, GL_DEST_NAMES[clamp(v, 0, GD_N - 1)]); break;
+    case GF_PCT: gq_put_dec(&p, (uint32_t)(v * 100 + 63) / 127u); *p++ = '%'; break;
+    case GF_SIGNED:
+    case GF_SEMI:
+        if (v) *p++ = v < 0 ? '-' : '+';
+        gq_put_dec(&p, (uint32_t)(v < 0 ? -v : v));
+        if (GQ[q].fmt == GF_SEMI) gq_put_str(&p, " st");
+        break;
+    case GF_SIZE: gq_put_dec(&p, (10u * pow2_q16(v * 8)) >> 16); gq_put_str(&p, "ms"); break;   /* 441 samples: 10 ms */
+    case GF_DENS:                               /* grains a second: 65536 / 2^(-DENS x 10 / 192), in tenths below 10 */
+        u = 6553600u / pow2_q16(-v * 10);       /* x 100 */
+        if (u < 1000u) gq_put_frac(&p, u, 0); else gq_put_dec(&p, (u + 50u) / 100u);
+        gq_put_str(&p, "/s");
+        break;
+    case GF_CUT:                                /* 30 Hz .. 16 kHz: 30 x 2^(v x 9.06 / 127) */
+        u = (30u * pow2_q16(v * 13696 / 1000)) >> 16;
+        if (u < 1000u) { gq_put_dec(&p, u); gq_put_str(&p, "Hz"); }
+        else { gq_put_frac(&p, u / 10u, 0); *p++ = 'k'; }
+        break;
+    case GF_TIME:
+        u = gp_env_ms(v);
+        if (u < 1000u) { gq_put_dec(&p, u); gq_put_str(&p, "ms"); }
+        else { gq_put_frac(&p, u / 10u, 0); *p++ = 's'; }
+        break;
+    case GF_LFOHZ:
+        u = gl_hz100(v);
+        if (u < 1000u) gq_put_frac(&p, u, 1); else gq_put_frac(&p, u, 0);
+        gq_put_str(&p, "Hz");
+        break;
+    default: gq_put_dec(&p, (uint32_t)(v < 0 ? -v : v)); break;
+    }
+    *p = 0;
+}
+
 /* ---- the buffers: sources A and B and a third the next render goes into; gsel says which one each source reads */
 static int16_t gbuf[3][GS_N] __attribute__((section(".pool")));
 static volatile uint8_t gsel[2] = {0, 1};
 static volatile int32_t groot16 = GS_ROOT16;     /* A's root: one read head, one root (ChoralRoot's rule) */
 
-/* 2^(i/192), Q16: pitch ratios in 1/16 semitones, d16 >= -3072 (eng_grain.c's) */
 static uint32_t pow2_q16(int32_t d16)
 {
     uint32_t u = (uint32_t)(d16 + 192 * 16), oct = u / 192u;
@@ -82,7 +174,9 @@ typedef struct {
 } gp_voice_t;
 static gp_grain_t gpg[GP_NG];
 static gp_voice_t gpv[GP_NV];
-static uint32_t gp_scan, gp_ages;
+static uint32_t gp_scan, gp_ages, gp_lph;         /* SCAN's phase, the voices' ages, the LFO's phase */
+static int32_t gp_lsh;                           /* the LFO's S&H value */
+static volatile int32_t gp_pos_view;             /* where the grains start (POS, SCAN, the LFO), Q8: the screen's */
 static int32_t gp_rng = 0x2545F491;
 static volatile uint32_t gp_bend_q16 = 65536;    /* the SMK-37's pitch wheel */
 
@@ -222,7 +316,7 @@ static int32_t gp_scan_inc(int32_t scan)
 /* an envelope time 2 ms .. 3.1 s as the amplitude's step a block, Q15 */
 static int32_t gp_env_step(int32_t p)
 {
-    uint32_t ms = (2u * pow2_q16(clamp(p, 0, 127) * 16)) >> 16, n = ms * 441u / 10u;
+    uint32_t n = gp_env_ms(p) * 441u / 10u;
     return (int32_t)(32767u * CTL / (n ? n : 1u)) + 1;
 }
 
@@ -240,23 +334,43 @@ static void gp_audio(int32_t *out, uint32_t n)
     const int16_t *A = gbuf[gsel[0]], *B = gbuf[gsel[1]];
     int32_t acc[CTL], mono[CTL], atk = gp_env_step(gp_p[GQ_ATK]), rel = gp_env_step(gp_p[GQ_REL]);
     int32_t kd = 8192 - gp_p[GQ_RES] * 60, scan = gp_scan_inc(gp_p[GQ_SCAN]);
-    uint32_t b, i, v, k, nact = 0, iv, share;
+    int32_t ldep = gp_p[GQ_LDEPTH], ldst = gp_p[GQ_LDEST], lwave = gp_p[GQ_LWAVE];
+    uint32_t b, i, v, k, nact = 0, iv, share, linc = gl_hz100(gp_p[GQ_LRATE]) * 31166u;   /* a block's turn of the LFO:
+                                                  * 2^32 x 32 / (44100 x 100) a hundredth of a hertz */
     gp_eff_t e;
     tsvf_t c;
-    e.size = gp_p[GQ_SIZE];
-    e.dens = gp_p[GQ_DENS];
-    e.sprd = gp_p[GQ_SPRD];
     e.rnd = gp_p[GQ_RAND];
-    e.morph = ((gp_p[GQ_MORPH] << 8) * 16513 + 8192) >> 14;   /* 0 .. 32768 = B alone */
-    iv = (44100u * pow2_q16(-e.dens * 10)) >> 16;           /* the next grain: DENS a second, 1 .. 98 /s */
-    tsvf_coef_k(&c, gp_p[GQ_CUT] << 8, kd);
     for (v = 0; v < GP_NV; v++)
         nact += gpv[v].gate || gpv[v].env;
     share = nact > 1u ? (GP_NG / nact > 2u ? GP_NG / nact : 2u) : GP_NG;
     for (b = 0; b < n; b += CTL) {
-        uint32_t m = n - b < CTL ? n - b : CTL;
+        uint32_t m = n - b < CTL ? n - b : CTL, old = gp_lph;
+        int32_t lm = 0, lpit;
+        gp_lph += linc;                         /* the LFO: one value a block, +-63 knob steps at full DEPTH */
+        if (gp_lph < old)
+            gp_lsh = (int32_t)(noise32(&gp_rng) >> 17) * 2 - 32767;
+        if (ldep) {
+            int32_t x;
+            switch (lwave) {
+            case 1: x = osc_tri(gp_lph); break;
+            case 2: x = (int32_t)(gp_lph >> 16) - 32768; break;
+            case 3: x = gp_lph < 0x80000000u ? 32767 : -32767; break;
+            case 4: x = gp_lsh; break;
+            default: x = sine_i(gp_lph); break;
+            }
+            lm = (x * ldep) >> 16;
+        }
+        e.size = clamp(gp_p[GQ_SIZE] + (ldst == GD_SIZE ? lm : 0), 0, 127);
+        e.dens = clamp(gp_p[GQ_DENS] + (ldst == GD_DENS ? lm : 0), 0, 127);
+        e.sprd = clamp(gp_p[GQ_SPRD] + (ldst == GD_SPRD ? lm : 0), 0, 127);
+        e.morph = ((clamp(gp_p[GQ_MORPH] + (ldst == GD_MORPH ? lm : 0), 0, 127) << 8) * 16513 + 8192) >> 14;   /* B: 32768 */
+        lpit = ldst == GD_PITCH ? lm * 3 : 0;  /* +-12 st */
+        iv = (44100u * pow2_q16(-e.dens * 10)) >> 16;       /* the next grain: DENS a second, 1 .. 98 /s */
+        tsvf_coef_k(&c, (gp_p[GQ_CUT] + (ldst == GD_CUT ? lm : 0)) * 256, kd);
         gp_scan += (uint32_t)scan;
-        e.pos_q8 = (int32_t)(((uint32_t)(gp_p[GQ_POS] << 8) + (gp_scan >> 17)) % (127u * 256u + 1u));
+        e.pos_q8 = (int32_t)(((uint32_t)clamp((gp_p[GQ_POS] + (ldst == GD_POS ? lm : 0)) * 256, 0, 127 << 8)
+                              + (gp_scan >> 17)) % (127u * 256u + 1u));
+        gp_pos_view = e.pos_q8;
         for (i = 0; i < m; i++)
             mono[i] = 0;
         for (v = 0; v < GP_NV; v++) {
@@ -270,7 +384,7 @@ static void gp_audio(int32_t *out, uint32_t n)
             de = (e1 - e0) / (int32_t)m;
             m0 = V->morph;
             V->morph = e.morph;
-            e.pitch16 = (int32_t)V->note * 16 + gp_p[GQ_PITCH] * 16;
+            e.pitch16 = (int32_t)V->note * 16 + gp_p[GQ_PITCH] * 16 + lpit;
             for (i = 0; i < m; i++)
                 acc[i] = 0;
             for (k = 0; k < GP_NG; k++)

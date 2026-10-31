@@ -10,10 +10,15 @@ CHIRP SWEEP VOWEL METAL), TONE, MOTION, SEED. Up to 16 grains, shared by 8 voice
 
 | control | |
 | --- | --- |
-| SELECT | the page: **SRC A**, **SRC B** (TYPE TONE MOTION SEED), **GRAIN** (SIZE DENS POS SPRD), **GRAIN+** (MORPH RAND PITCH SCAN), **FILT/ENV** (CUT RES ATK REL) |
-| KNOB 1..4 | the page's four values (a fast turn moves four a detent); kept in flash |
+| SELECT | the page: **SRC A**, **SRC B** (TYPE TONE MOTION SEED), **GRAIN** (SIZE DENS POS SPRD), **GRAIN+** (MORPH RAND PITCH SCAN), **FILT/ENV** (CUT RES ATK REL), **LFO** (RATE WAVE DEPTH DEST) |
+| KNOB 1..4 | the page's four values, in their units (ms, grains a second, %, Hz, semitones); the faster the turn, the bigger the step (up to 8 a detent) |
+| PRESETS | the sound: 8 factory presets (ChoralRoot's CLOUD PAD, SHIMMER, BREATH PAD, FROZEN, STRUM, SWARM, ACID DUST, GLITCH), then the user presets; MIDI program change too |
+| SAVE | save the sound: PRESETS picks the user slot (1..16), SAVE again writes it, HOME cancels |
+| ALGORITHM | the MIDI channel (OMNI or 1..16) |
 | OCT- OCT+ | the octave |
-| PRESETS | the MIDI channel (OMNI or 1..16) |
+
+The LFO (SINE TRI SAW SQUARE S&H, 0.05 .. 20 Hz) moves one of MORPH POS SIZE DENS SPRD PITCH CUT. The sound being
+played (marked `*` once changed), the octave, the channel and the page are kept in flash.
 
 The screen shows the material the grains read (A on SRC A, B on SRC B, the mix elsewhere, with POS and SPRD) and every
 grain sounding as a line moving across it. A source knob renders its buffer again in the main loop, a slice at a time,
