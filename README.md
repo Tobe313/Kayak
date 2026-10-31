@@ -3,7 +3,24 @@
 **A firmware for the M-VAVE FM-1 (and the M-Vave SMK-37), forked from [Dinghy](https://github.com/zvenson/dinghy) by zvenson.**
 
 Package identity `FM-1_946` (SMK-37: `SMK-37 Pro_946`, `SMK-37 Elite_946`, `MKE-P37_946`), packages `kayak*.fwsc`.
-For now it is Dinghy renamed: a sine wave on the keys. Dinghy's own README follows.
+Kayak is a granular synth: the GRAIN engine of [ChoralRoot FM-1](https://github.com/Quixotic7/ChoralRootFM1)
+(its [docs/GRAIN.md](https://github.com/Quixotic7/ChoralRootFM1/blob/main/docs/GRAIN.md)), cut down to one part.
+Two sources, A and B, are rendered by a small synth from four knobs each (no samples): TYPE (PLUCK DRONE BELL BREATH
+CHIRP SWEEP VOWEL METAL), TONE, MOTION, SEED. Up to 16 grains, shared by 8 voices, read A and B mixed by MORPH.
+
+| control | |
+| --- | --- |
+| SELECT | the page: **SRC A**, **SRC B** (TYPE TONE MOTION SEED), **GRAIN** (SIZE DENS POS SPRD), **GRAIN+** (MORPH RAND PITCH SCAN), **FILT/ENV** (CUT RES ATK REL) |
+| KNOB 1..4 | the page's four values (a fast turn moves four a detent); kept in flash |
+| OCT- OCT+ | the octave |
+| PRESETS | the MIDI channel (OMNI or 1..16) |
+
+The screen shows the material the grains read (A on SRC A, B on SRC B, the mix elsewhere, with POS and SPRD) and every
+grain sounding as a line moving across it. A source knob renders its buffer again in the main loop, a slice at a time,
+and the new material takes the old one's place when it is whole. Code: `firmware/src/grain.c` (the player, the renders),
+`grain_src.c` (ChoralRoot's generator, unchanged), `grain_dsp.h`, `firmware/gen/grain_tables.h`; the app `dinghy.c`.
+
+Dinghy's own README follows.
 
 ---
 

@@ -1,0 +1,19 @@
+# Kayak's GRAIN on the host: a chord, a source changed while it plays (a render and its swap), the pages turned,
+# the grain knobs moved, a release. tests/run_host.sh tests/scripts/grain.txt
+300 keys 0x4880
+700 shot
+800 enc 2 1
+900 enc 3 20
+1200 enc 0 2
+1300 enc 2 -40
+1400 enc 4 30
+1600 shot
+1800 enc 0 1
+1900 enc 2 64
+2000 enc 5 -20
+2300 shot
+2500 keys 0
+2600 enc 0 1
+2700 enc 2 -60
+3200 shot
+3500 end

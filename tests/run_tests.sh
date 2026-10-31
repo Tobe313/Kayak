@@ -21,6 +21,17 @@ run() { echo "== $1"; shift; "$@" || fail=1; }
 run "FM-1 app on the host: the default script plays, screens and sound" sh tests/run_host.sh
 run "SMK-37 app on the host: the default script" env BOARD=smk37 sh tests/run_host.sh
 run "FM-1 MIDI: USB, the TRS jack, a clock, the channel" sh tests/run_host.sh tests/scripts/midi.txt
+run "FM-1 GRAIN: a chord, a source rendered and swapped in while it plays, the pages and knobs" sh tests/run_host.sh tests/scripts/grain.txt
+run "FM-1 GRAIN: the chord sounds, unclipped, and the release ends in silence" python3 - <<'PY'
+import array, sys, wave
+w = wave.open("build/host/kayak.wav")
+a = array.array("h", w.readframes(w.getnframes()))
+fs = w.getframerate()
+peak = max(abs(x) for x in a[2 * fs // 2:2 * fs * 5 // 2])           # 0.5 .. 2.5 s: the chord held
+tail = max(abs(x) for x in a[2 * fs * 33 // 10:])                    # 3.3 s on: after the release
+print(f"GRAIN: peak {peak} while held, {tail} after the release")
+sys.exit(0 if 1000 < peak < 32767 and tail < 50 else 1)
+PY
 run "SMK-37: velocity, a pad, an outer key, the pitch wheel" env BOARD=smk37 sh tests/run_host.sh tests/scripts/smk37.txt
 
 $CC -DBOARD_SMK37=1 -Ifirmware/hal -o "$OUT/smk_flash_test" tests/smk_flash_test.c
