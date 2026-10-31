@@ -2,7 +2,7 @@
 
 **A firmware for the M-VAVE FM-1 (and the M-Vave SMK-37), forked from [Dinghy](https://github.com/zvenson/dinghy) by zvenson.**
 
-Package identity `FM-1_946` (SMK-37: `SMK-37 Pro_946`, `SMK-37 Elite_946`, `MKE-P37_946`), packages `kayak*.fwsc`.
+Package identity `FM-1_987` (SMK-37: `SMK-37 Pro_987`, `SMK-37 Elite_987`, `MKE-P37_987`; up to 0.41: `_946`), packages `kayak*.fwsc`.
 Kayak is a granular synth: the GRAIN engine of [ChoralRoot FM-1](https://github.com/Quixotic7/ChoralRootFM1)
 (its [docs/GRAIN.md](https://github.com/Quixotic7/ChoralRootFM1/blob/main/docs/GRAIN.md)), cut down to one part.
 Two sources, A and B, are rendered by a small synth from four knobs each (no samples): TYPE (PLUCK DRONE BELL BREATH

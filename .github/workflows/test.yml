@@ -1,0 +1,58 @@
+# Kayak: a test build by hand (workflow_dispatch, on any branch): the packages, the host tests, and the host run of
+# tests/scripts/grain.txt (its screens and its sound) as artifacts. No release: a tag vX.Y releases with release.yml.
+# The JieLi toolchain comes from pkgman.jieliapp.com (tools/get_toolchain.sh), the AC79 SDK from gitee.com.
+name: test
+
+on:
+  workflow_dispatch:
+
+jobs:
+  firmware:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Python packages
+        run: python3 -m pip install Pillow
+
+      - name: JieLi toolchain (pkgman.jieliapp.com)
+        run: sh tools/get_toolchain.sh
+
+      - name: JieLi AC79 SDK (three files of it are placed in the package)
+        run: |
+          for i in 1 2 3; do                     # (gitee.com drops a clone now and then: try again)
+            git clone --depth 1 --branch AC79NN_SDK_V1.2.1_2023-12-13 \
+                https://gitee.com/Jieli-Tech/fw-AC79_AIoT_SDK.git ~/fw-AC79_AIoT_SDK && break
+            rm -rf ~/fw-AC79_AIoT_SDK
+            sleep 20
+          done
+          test -d ~/fw-AC79_AIoT_SDK
+
+      - name: Build (the SMK-37 first, the FM-1 last, as the tests expect)
+        run: |
+          BOARD=smk37 sh build.sh
+          BOARD=smk37 MODEL=elite sh build.sh
+          BOARD=smk37 MODEL=mke sh build.sh
+          sh build.sh
+
+      - name: Host tests
+        run: sh tests/run_tests.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kayak-fwsc
+          path: build/kayak*.fwsc
+          if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kayak-host-preview      # the host run of tests/scripts/grain.txt: its screens and its sound
+          path: |
+            build/host/kayak-*.png
+            build/host/kayak.wav

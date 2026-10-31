@@ -9,7 +9,7 @@ Outputs in build/: dinghy.bin (app), loader/ota.bin (update loader),
 kayak.fwsc (package). See README.md for the toolchain and the SDK.
 
 --board smk37 (or BOARD=smk37) builds for the M-Vave SMK-37 (docs/SMK37.md): -DBOARD_SMK37=1 for the app and the
-loader, identity SMK-37 Pro_946, the SMK flash layout (fm1pkg_make.py, app slot
+loader, identity SMK-37 Pro_987, the SMK flash layout (fm1pkg_make.py, app slot
 0x97400), the package build/kayak-smk37.fwsc. --model elite / mke (or MODEL=) with smk37: the same build under the
 SMK-37 Elite's or the MKE-P37's model name (identity, loader and update record; -DSMK_MODEL), so M-Vave's updater
 still takes that unit's factory package: kayak-smk37-elite.fwsc, -mke.fwsc. The default stays the FM-1.
@@ -56,13 +56,13 @@ SDK_SHA256 = {
 
 BOARD = "fm1"                       # fm1 (default) or smk37: BOARD env or --board
 BOARD_PREFIX = {"fm1": "FM-1_9", "smk37": "SMK-37 Pro_9"}   # identity: prefix + KAYAK_ID
-KAYAK_ID = "46"                     # Kayak: 946 for every build (no free 9N_ decade on the hub; the version is APP_VER)
+KAYAK_ID = "87"                     # Kayak: 987 for every build (free on the hub, no versioned range; the version is APP_VER)
 BOARD_DEFS = {"fm1": [], "smk37": ["-DBOARD_SMK37=1"]}
 MODELS = {"pro": "SMK-37 Pro", "elite": "SMK-37 Elite", "mke": "MKE-P37"}   # smk37: one keyboard, three names
 DATA_FAMILY = "KAYAK"               # the SMK store's owner tag (store.h): 1..7 of A-Z 0-9
 SCREEN_NAME = "KAYAK"               # the update loader's screen (FM-1, ldr_screen.c): the name and its colour (RGB565)
 SCREEN_COLOUR = 0xFC63              # orange, #FF8C1A
-PRODUCT = "FM-1_946"                # Kayak: 946 (OUR_LOADER in the installer wants FM-1_9NN)
+PRODUCT = "FM-1_987"                # Kayak: 987 (OUR_LOADER in the installer wants FM-1_9NN)
 VERSION = None                      # APP_VER for release builds
 
 
@@ -299,7 +299,7 @@ def mmio_check():
 def main():
     global PRODUCT, VERSION, BOARD, APP_SLOT
     ap = argparse.ArgumentParser()
-    ap.add_argument("--release", metavar="X.Y", help="release build: version string X.Y (identity stays FM-1_946)")
+    ap.add_argument("--release", metavar="X.Y", help="release build: version string X.Y (identity stays FM-1_987)")
     ap.add_argument("--board", choices=sorted(BOARD_PREFIX), default=None,
                     help="target board: fm1 (default) or smk37 (default: $BOARD, else fm1)")
     ap.add_argument("--model", choices=sorted(MODELS), default=None,
