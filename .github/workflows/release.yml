@@ -82,8 +82,8 @@ jobs:
       - name: Release (tags only)
         if: github.ref_type == 'tag'
         uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            build/kayak-[0-9]*.fwsc   # (the release builds, not the dev ones: kayak-smk37.fwsc)
+        with:                           # (the release builds, not the dev ones: kayak-smk37.fwsc; no comment in the
+          files: |                      # block below: it would be part of the pattern)
+            build/kayak-[0-9]*.fwsc
             build/SHA256SUMS
           generate_release_notes: true
