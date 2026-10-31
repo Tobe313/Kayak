@@ -148,6 +148,62 @@ static void draw_midi(uint32_t src, uint32_t bpm, uint32_t running)   /* where n
     draw_text_box(0, 222, 240, &FONT_S, s, C_OFF, 1);
 }
 
+/* ---- the splash: a kayaker in pixel art, 48 x 28, each pixel a 4 x 4 square, one colour on black */
+#define ART_W 48u
+#define ART_H 28u
+#define ART_PX 4u
+static const char *const KAYAK_ART[ART_H] = {
+    "..........................................####..",
+    "...........................#.............#####..",
+    ".........................#####..........#####...",
+    ".........................#####.........#####....",
+    "........................#######.......#####.....",
+    ".........................#####.......#####......",
+    ".........................#####.....###..........",
+    "...........................#......###...........",
+    ".........................####...###.............",
+    ".........................#########..............",
+    "........................#########...............",
+    "........................#######.................",
+    "........................######..................",
+    ".......................######...................",
+    ".......................#####..................#.",
+    "......................######............######..",
+    ".....................#######......###########...",
+    "....................########################....",
+    "...................##..####################.....",
+    ".................###..###################.......",
+    "..........####..###.##################..........",
+    "....########..###..#############................",
+    ".###############..##########....................",
+    "...###########..#####...........................",
+    ".......#.#####..................................",
+    "........#####...................................",
+    ".......#####....................................",
+    ".......####.....................................",
+};
+static void splash(void)
+{
+    uint32_t half, r, x, x0 = (240u - ART_W * ART_PX) / 2u;
+    lcd_fill(0, 0, 240, 240, C_BLACK);
+    for (half = 0; half < 2u; half++) {         /* two strips of 14 rows (240 x 56: the canvas) */
+        cv_begin(240, ART_H / 2u * ART_PX, C_BLACK);
+        for (r = 0; r < ART_H / 2u; r++)
+            for (x = 0; x < ART_W; x++)
+                if (KAYAK_ART[half * ART_H / 2u + r][x] == '#')
+                    cv_rect((int32_t)(x0 + x * ART_PX), (int32_t)(r * ART_PX), ART_PX, ART_PX, C_ACC);
+        cv_blit(0, 24u + half * ART_H / 2u * ART_PX);
+    }
+    cv_begin(240, 12, C_BLACK);                 /* the water: two rows of dashes, offset */
+    for (x = 0; x < 240u / 16u; x++) {
+        cv_rect((int32_t)(x * 16u + 4u), 0, 8, ART_PX, C_ACC);
+        cv_rect((int32_t)(x * 16u + 12u), 8, 8, ART_PX, C_ACC);
+    }
+    cv_blit(0, 24u + ART_H * ART_PX + 6u);
+    draw_text_box(0, 172, 240, &FONT_L, "KAYAK", C_ACC, 1);
+    draw_text_box(0, 214, 240, &FONT_S, "GRAIN SYNTH  v" APP_VER, RGB(128, 70, 13), 1);
+}
+
 /* ---- MIDI in: from the main loop, and from app_idle while the screen draws (idle_ok) */
 static struct { uint8_t oct, ch, page; int8_t p[GQ_N]; } set;   /* what survives a power-off (up to SECTOR_MAX bytes) */
 static uint32_t idle_ok, midi_src, clk_n, clk_t0, clk_bpm, clk_run, clk_beat_ms;
@@ -202,6 +258,11 @@ static void app_main(void)
         for (k = 0; k < GQ_N; k++)              /* (a value out of its range: its default) */
             gp_p[k] = set.p[k] < GQ[k].min || set.p[k] > GQ[k].max ? GQ[k].def : set.p[k];
 
+    splash();                                   /* 1.5 s, while the two sources render */
+    for (k = fm1_ms; fm1_ms - k < 1500u;) {
+        platform_poll();
+        grain_poll();
+    }
     lcd_fill(0, 0, 240, 240, C_BLACK);
     draw_text_box(0, 6, 240, &FONT_S, APP_NAME "  GRAIN  v" APP_VER, C_ACC, 1);
 

@@ -27,8 +27,8 @@ import array, sys, wave
 w = wave.open("build/host/kayak.wav")
 a = array.array("h", w.readframes(w.getnframes()))
 fs = w.getframerate()
-peak = max(abs(x) for x in a[2 * fs // 2:2 * fs * 5 // 2])           # 0.5 .. 2.5 s: the chord held
-tail = max(abs(x) for x in a[2 * fs * 33 // 10:])                    # 3.3 s on: after the release
+peak = max(abs(x) for x in a[2 * fs * 2:2 * fs * 4])                 # 2 .. 4 s: the chord held (after the splash)
+tail = max(abs(x) for x in a[2 * fs * 48 // 10:])                    # 4.8 s on: after the release
 print(f"GRAIN: peak {peak} while held, {tail} after the release")
 sys.exit(0 if 1000 < peak < 32767 and tail < 50 else 1)
 PY
