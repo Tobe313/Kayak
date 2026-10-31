@@ -1,4 +1,11 @@
-<p align="center"><img src="assets/logo.svg" width="96" alt="Dinghy"></p>
+# Kayak
+
+**A firmware for the M-VAVE FM-1 (and the M-Vave SMK-37), forked from [Dinghy](https://github.com/zvenson/dinghy) by zvenson.**
+
+Package identity `FM-1_946` (SMK-37: `SMK-37 Pro_946`, `SMK-37 Elite_946`, `MKE-P37_946`), packages `kayak*.fwsc`.
+For now it is Dinghy renamed: a sine wave on the keys. Dinghy's own README follows.
+
+---
 
 # Dinghy
 

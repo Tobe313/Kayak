@@ -18,7 +18,7 @@
 #include <stdint.h>
 
 #ifndef STORE_MAGIC
-#define STORE_MAGIC 0x59474E44u                 /* "DNGY": settings and blobs (slots: "SLOT"); your fork: your own */
+#define STORE_MAGIC 0x4B41594Bu                 /* "KYAK": settings and blobs (slots: "SLOT") */
 #endif
 #define NBLOB 8u                                /* blobs: one 4 KiB sector each */
 #define NSLOT 8u                                /* slots: SLOT_SECT sectors each, for something bigger (samples, songs) */
@@ -30,7 +30,7 @@
 #define OWNER_AT 0x000AF000u                    /* (the kit's place for it) */
 #define SLOTS_AT 0x000C2000u
 #ifndef DATA_FAMILY
-#define DATA_FAMILY "DINGHY"                    /* the owner tag's family: 1..7 of A-Z 0-9 (tools/build.py DATA_FAMILY) */
+#define DATA_FAMILY "KAYAK"                     /* the owner tag's family: 1..7 of A-Z 0-9 (tools/build.py DATA_FAMILY) */
 #endif
 #define FL_RANGE_OK(off, n) (FL_IN(off, n, FL_OTA_LO, FL_OTA_HI) || FL_IN(off, n, SETTINGS_AT, SETTINGS_AT + 0x1000u) || \
                              FL_IN(off, n, BLOBS_AT, BLOBS_AT + NBLOB * 0x1000u) || FL_IN(off, n, OWNER_AT, OWNER_AT + 0x1000u) || \

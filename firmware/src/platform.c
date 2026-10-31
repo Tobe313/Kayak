@@ -78,13 +78,13 @@ static void fm1_led_key_glow(uint32_t id, int on)   /* as fm1_led_key, the dim l
 #include "bootguard.h"
 
 #ifndef APP_NAME
-#define APP_NAME "DINGHY"
+#define APP_NAME "KAYAK"
 #endif
 #ifndef FELUCCA_ID
 #if BOARD_SMK37
-#define FELUCCA_ID SMK_MODEL "_990"             /* SMK-37 Pro_99N (Elite, MKE-P37: SMK_MODEL), tools/build.py */
+#define FELUCCA_ID SMK_MODEL "_946"             /* SMK-37 Pro_946 (Elite, MKE-P37: SMK_MODEL), tools/build.py */
 #else
-#define FELUCCA_ID "FM-1_990"                   /* package identity: 99N = Dinghy build N (tools/build.py) */
+#define FELUCCA_ID "FM-1_946"                   /* package identity: 946 = Kayak (tools/build.py) */
 #endif
 #endif
 #ifndef APP_VER

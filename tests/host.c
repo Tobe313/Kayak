@@ -23,7 +23,7 @@
 #endif
 
 #ifndef APP_NAME
-#define APP_NAME "DINGHY"
+#define APP_NAME "KAYAK"
 #endif
 #ifndef APP_VER
 #define APP_VER "0.0"
