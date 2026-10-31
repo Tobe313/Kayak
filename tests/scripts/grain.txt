@@ -1,6 +1,7 @@
-# Kayak's GRAIN on the host: the splash, a chord, a source changed while it plays (a render and its swap), the pages
-# turned, the grain knobs moved, the effects' pages (FX) and their MIX knobs, a release, the LFO, a preset chosen and
-# saved into a user slot. tests/run_host.sh tests/scripts/grain.txt
+# Kayak on the host: the splash, a chord, a source changed while it plays (a render and its swap), the pages turned,
+# the grain knobs moved, the effects' pages (FX) and their MIX knobs, a release, the LFO, a preset chosen and saved
+# into a user slot; then HOME (the wave and the scope), SEQ (three steps written: a note, a chord, a rest, a note),
+# PLAY, HOME while it plays, ARP on, PLAY again to stop. tests/run_host.sh tests/scripts/grain.txt
 700 shot
 1800 keys 0x4880
 2200 shot
@@ -29,4 +30,22 @@
 5500 shot
 5600 btn 9
 5800 shot
-6000 end
+6000 btn 8
+6300 shot
+6400 btn 11
+6500 keys 0x80
+6600 keys 0
+6700 keys 0x880
+6800 keys 0
+6900 btn 13
+7000 keys 0x4000
+7100 keys 0
+7150 shot
+7200 btn 12
+7600 shot
+7700 btn 8
+8000 shot
+8200 btn 10
+8500 shot
+8600 btn 12
+9000 end

@@ -24,7 +24,14 @@
 #define GP_RATE_Q16 ((GS_RATE << 16) / 44100u)
 #define GP_VOICE 12000           /* a voice's level at full velocity */
 
-/* ---- the knobs: 44 values, eleven pages of four, seven of the sound and four of the effects (dinghy.c draws and
+/* the arpeggiator's modes and the note values (the arp's and the sequencer's: OberVave's) */
+enum { A_OFF, A_UP, A_DOWN, A_UPDN, A_RND, A_PLAY, NARPMODE };
+static const char *const ARP_NAMES[NARPMODE] = {"OFF", "UP", "DOWN", "UP/DN", "RANDOM", "PLAYED"};
+enum { D_4, D_8, D_8T, D_16, D_16T, D_32, D_32T, NDIV };
+static const char *const DIV_NAMES[NDIV] = {"1/4", "1/8", "1/8T", "1/16", "1/16T", "1/32", "1/32T"};
+static const uint8_t DIV_PER_QUARTER[NDIV] = {1, 2, 3, 4, 6, 8, 12};
+
+/* ---- the knobs: 48 values, twelve pages of four, eight of the sound and four of the effects (dinghy.c draws and
  * turns them) */
 enum {
     GQ_TYPE_A, GQ_TONE_A, GQ_MOTION_A, GQ_SEED_A,
@@ -34,6 +41,7 @@ enum {
     GQ_FTYPE, GQ_CUT, GQ_RES, GQ_FDRIVE,         /* OberVave's filter */
     GQ_KTRK, GQ_FMORPH, GQ_ATK, GQ_REL,
     GQ_LRATE, GQ_LWAVE, GQ_LDEPTH, GQ_LDEST,
+    GQ_AMODE, GQ_ADIV, GQ_AOCT, GQ_AGATE,        /* OberVave's arpeggiator (kayak_seq.h) */
     GQ_CRATE, GQ_CDEPTH, GQ_CMIX, GQ_CNONE,      /* OberVave's effects */
     GQ_DTIME, GQ_DFB, GQ_DTONE, GQ_DMIX,
     GQ_RSIZE, GQ_RDAMP, GQ_RPRE, GQ_RMIX,
@@ -43,7 +51,7 @@ enum {
 #define GQ_FX0 GQ_CRATE                         /* the first knob of the effects' pages */
 /* how a value reads on the screen (gq_text) */
 enum { GF_INT, GF_TYPE, GF_PCT, GF_SIGNED, GF_SEMI, GF_SIZE, GF_DENS, GF_CUT, GF_TIME, GF_LFOHZ, GF_LWAVE, GF_LDEST,
-       GF_FTYPE, GF_VTYPE, GF_DLYMS, GF_NONE };
+       GF_FTYPE, GF_VTYPE, GF_DLYMS, GF_NONE, GF_ARP, GF_DIV };
 #define GL_NWAVE 5u
 static const char *const GL_WAVE_NAMES[GL_NWAVE] = {"SINE", "TRI", "SAW", "SQUARE", "S&H"};
 enum { GD_MORPH, GD_POS, GD_SIZE, GD_DENS, GD_SPRD, GD_PITCH, GD_CUT, GD_N };
@@ -64,6 +72,8 @@ static const gq_desc_t GQ[GQ_N] = {
     {"KTRK", 0, 127, 64, GF_PCT}, {"SEM", 0, 127, 64, GF_PCT}, {"ATK", 0, 127, 30, GF_TIME}, {"REL", 0, 127, 84, GF_TIME},
     {"RATE", 0, 127, 40, GF_LFOHZ}, {"WAVE", 0, GL_NWAVE - 1, 0, GF_LWAVE}, {"DEPTH", 0, 127, 0, GF_PCT},
     {"DEST", 0, GD_N - 1, GD_MORPH, GF_LDEST},
+    {"MODE", 0, NARPMODE - 1, A_OFF, GF_ARP}, {"DIV", 0, NDIV - 1, D_16, GF_DIV}, {"OCTAVES", 1, 4, 1, GF_INT},
+    {"GATE", 0, 127, 64, GF_PCT},
     {"RATE", 0, 127, 30, GF_PCT}, {"DEPTH", 0, 127, 40, GF_PCT}, {"MIX", 0, 127, 0, GF_PCT}, {0, 0, 0, 0, GF_NONE},
     {"TIME", 0, 127, 80, GF_DLYMS}, {"FEEDBK", 0, 127, 50, GF_PCT}, {"TONE", 0, 127, 70, GF_PCT}, {"MIX", 0, 127, 0, GF_PCT},
     {"SIZE", 0, 127, 100, GF_PCT}, {"DAMP", 0, 127, 75, GF_PCT}, {"PRE", 0, 127, 30, GF_PCT}, {"MIX", 0, 127, 0, GF_PCT},
@@ -85,24 +95,25 @@ static const char *const GP_FACT_NAMES[GP_NFACT] = {
     "CLOUD PAD", "SHIMMER", "BREATH PAD", "FROZEN", "STRUM", "SWARM", "ACID DUST", "GLITCH"};
 static const int8_t GP_FACT[GP_NFACT][GQ_N] = {
     /* A: TYPE TONE MOTION SEED | B | SIZE DENS POS SPRD | MORPH RAND PITCH SCAN | FILTER: TYPE CUT RES DRIVE |
-     * KTRK SEM ATK REL | LFO: RATE WAVE DEPTH DEST | CHORUS: RATE DEPTH MIX - | DELAY: TIME FB TONE MIX |
+     * KTRK SEM ATK REL | LFO: RATE WAVE DEPTH DEST |
+     * ARP: MODE DIV OCTAVES GATE | CHORUS: RATE DEPTH MIX - | DELAY: TIME FB TONE MIX |
      * REVERB: SIZE DAMP PRE MIX | DRIVE: TYPE AMOUNT TONE MIX */
     {GT_DRONE, 64, 64, 0, GT_BELL, 64, 64, 0, 92, 88, 50, 40, 40, 14, 0, 12, F_LP12, 100, 20, 0, 64, 64, 40, 90,
-     30, 0, 50, GD_MORPH, 30, 40, 40, 0, 90, 45, 50, 25, 110, 70, 40, 60, DV_OVERDRIVE, 40, 90, 0},
+     30, 0, 50, GD_MORPH, A_OFF, D_16, 1, 64, 30, 40, 40, 0, 90, 45, 50, 25, 110, 70, 40, 60, DV_OVERDRIVE, 40, 90, 0},
     {GT_BELL, 64, 64, 0, GT_BELL, 104, 104, 11, 70, 100, 30, 30, 64, 24, 12, 8, F_LP12, 110, 10, 0, 64, 64, 30, 96,
-     45, 0, 70, GD_MORPH, 40, 50, 30, 0, 100, 55, 60, 35, 120, 60, 50, 70, DV_OVERDRIVE, 40, 90, 0},
+     45, 0, 70, GD_MORPH, A_OFF, D_16, 1, 64, 40, 50, 30, 0, 100, 55, 60, 35, 120, 60, 50, 70, DV_OVERDRIVE, 40, 90, 0},
     {GT_BREATH, 64, 64, 0, GT_VOWEL, 64, 20, 3, 92, 88, 50, 40, 64, 10, 0, 12, F_SEM, 96, 30, 0, 64, 30, 50, 96,
-     25, 1, 40, GD_POS, 25, 60, 50, 0, 80, 40, 40, 0, 115, 80, 40, 55, DV_OVERDRIVE, 40, 90, 0},
+     25, 1, 40, GD_POS, A_OFF, D_16, 1, 64, 25, 60, 50, 0, 80, 40, 40, 0, 115, 80, 40, 55, DV_OVERDRIVE, 40, 90, 0},
     {GT_VOWEL, 28, 20, 3, GT_BREATH, 28, 20, 3, 108, 72, 40, 0, 0, 10, 0, 5, F_LP24, 92, 10, 0, 64, 64, 60, 100,
-     20, 1, 30, GD_MORPH, 30, 40, 0, 0, 110, 60, 40, 20, 127, 50, 60, 75, DV_OVERDRIVE, 40, 90, 0},
+     20, 1, 30, GD_MORPH, A_OFF, D_16, 1, 64, 30, 40, 0, 0, 110, 60, 40, 20, 127, 50, 60, 75, DV_OVERDRIVE, 40, 90, 0},
     {GT_PLUCK, 64, 100, 0, GT_METAL, 64, 64, 0, 60, 80, 20, 30, 0, 10, 0, 0, F_LP12, 110, 0, 0, 80, 64, 2, 70,
-     50, 2, 40, GD_MORPH, 30, 40, 25, 0, 70, 50, 60, 40, 90, 70, 20, 30, DV_OVERDRIVE, 40, 90, 0},
+     50, 2, 40, GD_MORPH, A_UP, D_16, 2, 50, 30, 40, 25, 0, 70, 50, 60, 40, 90, 70, 20, 30, DV_OVERDRIVE, 40, 90, 0},
     {GT_CHIRP, 64, 64, 0, GT_SWEEP, 64, 64, 0, 48, 110, 50, 60, 64, 60, 0, 20, F_BP12, 120, 40, 20, 64, 64, 20, 80,
-     60, 4, 50, GD_CUT, 60, 70, 40, 0, 60, 60, 70, 40, 100, 70, 20, 35, DV_DIST, 50, 80, 20},
+     60, 4, 50, GD_CUT, A_OFF, D_16, 1, 64, 60, 70, 40, 0, 60, 60, 70, 40, 100, 70, 20, 35, DV_DIST, 50, 80, 20},
     {GT_SWEEP, 104, 104, 11, GT_PLUCK, 104, 104, 11, 30, 118, 50, 80, 40, 40, 0, -24, F_LP24, 100, 70, 40, 90, 64, 5,
-     60, 70, 1, 70, GD_CUT, 30, 40, 0, 0, 75, 65, 50, 45, 80, 70, 20, 25, DV_DIST, 60, 70, 35},
+     60, 70, 1, 70, GD_CUT, A_OFF, D_16, 1, 64, 30, 40, 0, 0, 75, 65, 50, 45, 80, 70, 20, 25, DV_DIST, 60, 70, 35},
     {GT_METAL, 64, 64, 0, GT_DRONE, 64, 64, 0, 24, 112, 64, 100, 64, 90, 0, 0, F_HP12, 60, 30, 30, 64, 64, 2, 50,
-     80, 3, 60, GD_SIZE, 30, 40, 0, 0, 40, 70, 90, 40, 70, 60, 10, 25, DV_CRUSH, 70, 100, 50},
+     80, 3, 60, GD_SIZE, A_OFF, D_16, 1, 64, 30, 40, 0, 0, 40, 70, 90, 40, 70, 60, 10, 25, DV_CRUSH, 70, 100, 50},
 };
 
 /* 2^(i/192), Q16: pitch ratios in 1/16 semitones, d16 >= -3072 (eng_grain.c's) */
@@ -154,6 +165,8 @@ static void gq_text(uint32_t q, int32_t v, char *s)
     case GF_FTYPE: gq_put_str(&p, FTYPE_NAMES[clamp(v, 0, NFTYPE - 1)]); break;
     case GF_VTYPE: gq_put_str(&p, VTYPE_NAMES[clamp(v, 0, NDV - 1)]); break;
     case GF_NONE: break;
+    case GF_ARP: gq_put_str(&p, ARP_NAMES[clamp(v, 0, NARPMODE - 1)]); break;
+    case GF_DIV: gq_put_str(&p, DIV_NAMES[clamp(v, 0, NDIV - 1)]); break;
     case GF_DLYMS: gq_put_dec(&p, gp_dly_ms(v)); gq_put_str(&p, "ms"); break;
     case GF_CUT:                                /* OberVave's: MIDI note v + 8, 13 Hz .. 19.9 kHz */
         u = (440u * pow2_q16((v - 61) * 16)) >> 16;
@@ -364,6 +377,15 @@ static void gp_kill(uint32_t vi)                  /* the grains of voice vi go *
             gpg[i].owner = 0;
 }
 
+/* the arpeggiator, the sequencer, the keys' events (kayak_seq.h, after the voices) */
+static void kayak_events(void);
+static void arp_tick(void);
+static void seq_tick(void);
+/* the output as the oscilloscope shows it (HOME): the last SCOPE_N frames, mono */
+#define SCOPE_N 512u
+static int16_t scope[SCOPE_N];
+static volatile uint32_t scope_w;
+
 /* ---- the audio side: n stereo frames added to out */
 static void gp_audio(int32_t *out, uint32_t n)
 {
@@ -382,6 +404,7 @@ static void gp_audio(int32_t *out, uint32_t n)
         fx_ready = 1;
     }
     if (n > 256u) n = 256u;                     /* (the platform's block: 256 frames) */
+    kayak_events();                             /* the keys since the last call: to the arp or the voices */
     drv = 4096 + d * d * 15 * 4096 / 16129;     /* DRIVE into the filter: 1 .. 16 (OberVave's) */
     ktrk = gp_p[GQ_KTRK] * 2;                   /* the cutoff follows the note: 127 = a semitone a semitone */
     e.rnd = gp_p[GQ_RAND];
@@ -391,6 +414,8 @@ static void gp_audio(int32_t *out, uint32_t n)
     for (b = 0; b < n; b += CTL) {
         uint32_t m = n - b < CTL ? n - b : CTL, old = gp_lph;
         int32_t lm = 0, lpit;
+        arp_tick();                             /* the arp, then the sequencer (OberVave's order): their notes this block */
+        seq_tick();
         gp_lph += linc;                         /* the LFO: one value a block, +-63 knob steps at full DEPTH */
         if (gp_lph < old)
             gp_lsh = (int32_t)(noise32(&gp_rng) >> 17) * 2 - 32767;
@@ -467,10 +492,13 @@ static void gp_audio(int32_t *out, uint32_t n)
     drive_process(out, dry, n, (uint32_t)gp_p[GQ_VTYPE], (uint32_t)gp_p[GQ_VAMT], (uint32_t)gp_p[GQ_VTONE],
                   (uint32_t)gp_p[GQ_VMIX]);
     fx_process(out, dry, dry, dry, n);
+    for (i = 0; i < n; i++)                     /* the oscilloscope's ring */
+        scope[(scope_w + i) % SCOPE_N] = (int16_t)((out[2u * i] + out[2u * i + 1u]) >> 1);
+    scope_w += n;
 }
 
-/* ---- notes, from the main loop */
-static void gp_note_on(uint32_t note, uint32_t vel)
+/* ---- the voices, from the audio side (the keys' events, the arpeggiator, the sequencer: kayak_seq.h) */
+static void gp_voice_on(uint32_t note, uint32_t vel)
 {
     uint32_t v, pick = 0, best = 0xFFFFFFFFu;
     if (note > 127u || !vel)
@@ -480,7 +508,6 @@ static void gp_note_on(uint32_t note, uint32_t vel)
                        : gpv[v].gate ? 0x80000000u + gpv[v].age : (uint32_t)gpv[v].env + 1u;
         if (score < best) { best = score; pick = v; }
     }
-    fm1_irq_off();
     if (!gpv[pick].env) {                       /* a fresh voice: no grains from before, the filter clear */
         gp_kill(pick);
         memset(&gpv[pick].flt, 0, sizeof gpv[pick].flt);
@@ -491,15 +518,31 @@ static void gp_note_on(uint32_t note, uint32_t vel)
     gpv[pick].lvl = (int32_t)(vel * GP_VOICE / 127u);
     gpv[pick].next = 0;                         /* the first grain at once */
     gpv[pick].gate = 1;
-    fm1_irq_on();
 }
-static void gp_note_off(uint32_t note)
+static void gp_voice_off(uint32_t note)
 {
     uint32_t v;
     for (v = 0; v < GP_NV; v++)
         if (gpv[v].note == note)
             gpv[v].gate = 0;
 }
+
+/* ---- notes, from the main loop: a queue the audio side takes at its next call (kayak_events) */
+#define EVQ_N 64u
+static volatile uint8_t evq[EVQ_N][2];          /* note, velocity (0: off) */
+static volatile uint32_t evq_w, evq_r;
+static void gp_note_post(uint32_t note, uint32_t vel)
+{
+    if (note > 127u || evq_w - evq_r >= EVQ_N)
+        return;
+    evq[evq_w % EVQ_N][0] = (uint8_t)note;
+    evq[evq_w % EVQ_N][1] = (uint8_t)vel;
+    __asm__ volatile("" ::: "memory");          /* (the entry before the index: the ISR reads in that order) */
+    evq_w++;
+}
+static void gp_note_on(uint32_t note, uint32_t vel) { if (vel) gp_note_post(note, vel > 127u ? 127u : vel); }
+static void gp_note_off(uint32_t note) { gp_note_post(note, 0); }
+#include "kayak_seq.h"
 static int gp_quiet(void)                         /* nothing sounds, not even a release */
 {
     uint32_t v;

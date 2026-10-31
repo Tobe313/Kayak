@@ -1,25 +1,31 @@
 /* SPDX-License-Identifier: GPL-3.0-only */
 /* Kayak (a fork of Dinghy, the smallest FM-1 firmware to build your own on): a granular synth, ChoralRoot FM-1's
  * GRAIN engine (grain.c) on Dinghy's platform (platform.c: updates, the USB rescue, MIDI, USB audio, keys, knobs,
- * LEDs, the screen, flash storage; the FM-1 and the SMK-37).
+ * LEDs, the screen, flash storage; the FM-1 and the SMK-37), with OberVave's filter, effects, arpeggiator and
+ * sequencer.
  *
  *   keys       play the grains, 8 voices; the notes go out over USB-MIDI too, on the MIDI channel
  *   SELECT     the page: SRC A, SRC B (TYPE TONE MOTION SEED), GRAIN (SIZE DENS POS SPRD),
  *              GRAIN+ (MORPH RAND PITCH SCAN), FILTER (TYPE CUT RES DRIVE: OberVave's), ENV (KTRK SEM ATK REL),
- *              LFO (RATE WAVE DEPTH DEST)
+ *              LFO (RATE WAVE DEPTH DEST), ARP (MODE DIV OCTAVES GATE)
+ *   KNOB 1..4  the page's four values; the faster the turn, the bigger the step
  *   FX         the effects' pages and back (lit there): CHORUS (RATE DEPTH MIX), DELAY (TIME FEEDBK TONE MIX),
  *              REVERB (SIZE DAMP PRE MIX), DRIVE (TYPE AMOUNT TONE MIX): OberVave's
- *   KNOB 1..4  the page's four values; the faster the turn, the bigger the step
+ *   ENV LFO    straight to their page
+ *   ARP        the arpeggiator on (lit) or off, and its page
+ *   SEQ        the step sequencer's screen (lit): the keys write the step under the cursor (a chord: keys held
+ *              together) and move on, REC writes a rest, SELECT moves the cursor, KNOB 1..4 TEMPO LENGTH DIV SWING
+ *   PLAY       the sequencer runs (lit, a blink a beat) or stops; MIDI START / STOP too, a MIDI clock sets the tempo
+ *   HOME       a short press: the wave and an oscilloscope of the output; a knob or SELECT goes back to the pages
  *   PRESETS    the sound: the 8 factory presets, then the user presets saved; MIDI program change too
  *   SAVE       save the sound: PRESETS picks the user slot (1..16), SAVE again writes it, HOME cancels
  *   ALGORITHM  the MIDI channel: OMNI (in: all, out: 1) or 1..16
  *   OCT- OCT+  the octave
  *   MASTER     the volume (platform.c)
- *   MIDI in    notes from USB or the TRS jack play the grains, with their velocity; a MIDI clock shows its tempo
- *              and blinks PLAY on the beat, START / STOP light it
  *   SMK-37     the keys with velocity, the outer keys too, the pads (white keys F3..G5, lit while they sound), the
  *              pitch wheel bends +-2 semitones
- * The sound being played, the octave, the channel and the page are kept in flash (2 s after a change, when silent).
+ * The buttons that do something glow; they light fully while what they do is on. The sound being played, the octave,
+ * the channel and the page are kept in flash (2 s after a change, when silent), the sequence too (when stopped).
  *
  * Rules of the road (the chip has no FPU and no libgcc): integers only, no float, no 64-bit division.
  * tests/host.c runs this file on a computer: the screen as a PNG, the sound as a WAV.
@@ -38,11 +44,15 @@ static void app_audio(int32_t *out, uint32_t n)
     gp_audio(out, n);
 }
 
-/* ---- the pages: seven of the sound, then four of the effects (FX goes there and back), four knobs each */
-#define NPAGE 11u
+/* ---- the pages: eight of the sound, then four of the effects (FX goes there and back), four knobs each */
+#define NPAGE 12u
 #define FX_PAGE0 (GQ_FX0 / 4u)
-static const char *const PAGE_NAME[NPAGE] = {"SRC A", "SRC B", "GRAIN", "GRAIN+", "FILTER", "ENV", "LFO",
+#define PG_ENV (GQ_KTRK / 4u)
+#define PG_LFO (GQ_LRATE / 4u)
+#define PG_ARP (GQ_AMODE / 4u)
+static const char *const PAGE_NAME[NPAGE] = {"SRC A", "SRC B", "GRAIN", "GRAIN+", "FILTER", "ENV", "LFO", "ARP",
                                              "FX CHORUS", "FX DELAY", "FX REVERB", "FX DRIVE"};
+enum { V_PAGES, V_HOME, V_SEQ };                /* what the screen shows */
 
 /* ---- the presets: the factory ones (grain.c), then NUSER the user saves (blob 0) */
 #define NUSER 16u
@@ -84,6 +94,7 @@ static int32_t enc_fast(uint32_t k, int32_t e)
 #define KEY0 53u                                /* key 0 = F3 */
 #define WV_Y 70u                                /* the wave band: 240 x 64 */
 #define CELL_Y 142u                             /* the four values: 240 x 56 */
+#define SCOPE_Y 140u                            /* HOME: the oscilloscope, 240 x 64 */
 
 static int8_t wv_lo[240], wv_hi[240];          /* the band's envelope, a min / max a column (of 127) */
 static void wave_take(uint32_t pg)              /* SRC A: A, SRC B: B, else the mix by MORPH */
@@ -124,6 +135,26 @@ static void draw_wave(uint32_t pg)
         }
     }
     cv_blit(0, WV_Y);
+}
+
+/* HOME: the output as an oscilloscope, 240 frames (5.4 ms) from a rising zero crossing, scaled to its own peak */
+static void draw_scope(void)
+{
+    static int16_t s[480];
+    uint32_t w = scope_w, i, t = 0;
+    int32_t pk = 2000, y0 = 32, x;
+    for (i = 0; i < 480u; i++) s[i] = scope[(w - 480u + i) % SCOPE_N];
+    for (i = 1; i < 240u; i++)
+        if (s[i - 1u] < 0 && s[i] >= 0) { t = i; break; }
+    for (i = t; i < t + 240u; i++) { int32_t a = s[i] < 0 ? -s[i] : s[i]; if (a > pk) pk = a; }
+    cv_begin(240, 64, C_BLACK);
+    cv_rect(0, 32, 240, 1, C_DIMBAR);
+    for (x = 0; x < 240; x++) {
+        int32_t y = 32 - s[t + (uint32_t)x] * 30 / pk;
+        if (x) cv_line(x - 1, y0, x, y, C_ACC);
+        y0 = y;
+    }
+    cv_blit(0, SCOPE_Y);
 }
 
 static void draw_cells(uint32_t pg)
@@ -201,6 +232,71 @@ static void draw_midi(uint32_t src, uint32_t bpm, uint32_t running)   /* where n
     draw_text_box(0, 222, 240, &FONT_S, s, C_OFF, 1);
 }
 
+static void note_name(uint32_t n, char **p)     /* "C4", "F#2" */
+{
+    static const char *const NAME[12] = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"};
+    gq_put_str(p, NAME[n % 12u]);
+    if (n < 12u) *(*p)++ = '-';
+    else gq_put_dec(p, n / 12u - 1u);
+}
+
+/* HOME's line: the arp, the sequencer, the tempo */
+static void draw_home_line(uint32_t run, uint32_t bpm)
+{
+    char s[40], *p = s;
+    gq_put_str(&p, "ARP ");
+    gq_put_str(&p, ARP_NAMES[clamp(gp_p[GQ_AMODE], 0, NARPMODE - 1)]);
+    gq_put_str(&p, run ? "  SEQ PLAY  " : "  SEQ STOP  ");
+    gq_put_dec(&p, bpm);
+    gq_put_str(&p, " BPM");
+    *p = 0;
+    draw_text_box(0, 206, 240, &FONT_S, s, C_OFF, 1);
+}
+
+/* SEQ: the steps of the cursor's bar of 16, 4 x 4 cells of 60 x 32: the note (a chord: its first and a +), the cursor
+ * framed, the step playing filled, the steps past the length dark */
+static void draw_seq(uint32_t cur, uint32_t play)
+{
+    uint32_t half, r, c, b0 = cur / 16u * 16u, len = (uint32_t)clamp(pat.len, 1, SEQ_MAX);
+    for (half = 0; half < 2u; half++) {
+        cv_begin(240, 64, C_BLACK);
+        for (r = 0; r < 2u; r++)
+            for (c = 0; c < 4u; c++) {
+                uint32_t i = b0 + (half * 2u + r) * 4u + c;
+                int32_t x0 = (int32_t)c * 60, y0 = (int32_t)r * 32;
+                char s[8], *p = s;
+                const step_t *st = &pat.st[i % SEQ_MAX];
+                if (i >= len) { cv_rect(x0 + 2, y0 + 2, 56, 28, RGB(20, 20, 20)); continue; }
+                cv_rect(x0 + 2, y0 + 2, 56, 28, i == play ? RGB(90, 50, 10) : C_DIMBAR);
+                if (i == cur) {
+                    cv_rect(x0 + 1, y0 + 1, 58, 2, C_ACC); cv_rect(x0 + 1, y0 + 29, 58, 2, C_ACC);
+                    cv_rect(x0 + 1, y0 + 1, 2, 30, C_ACC); cv_rect(x0 + 57, y0 + 1, 2, 30, C_ACC);
+                }
+                if (st->note[0]) { note_name(st->note[0], &p); if (st->note[1]) *p++ = '+'; }
+                else *p++ = '-';
+                *p = 0;
+                cv_text(x0 + (60 - text_w(&FONT_S, s)) / 2, y0 + 8, &FONT_S, s, st->note[0] ? C_WHITE : C_OFF);
+            }
+        cv_blit(0, WV_Y + half * 64u);
+    }
+}
+static void draw_seq_lines(uint32_t bpm)        /* the knobs: TEMPO LENGTH, DIV SWING */
+{
+    char s[40], *p = s;
+    gq_put_dec(&p, bpm);
+    gq_put_str(&p, " BPM   LENGTH ");
+    gq_put_dec(&p, pat.len);
+    *p = 0;
+    draw_text_box(0, 204, 240, &FONT_S, s, C_OFF, 1);
+    p = s;
+    gq_put_str(&p, DIV_NAMES[pat.div % NDIV]);
+    gq_put_str(&p, "   SWING ");
+    gq_put_dec(&p, pat.swing);
+    *p++ = '%';
+    *p = 0;
+    draw_text_box(0, 222, 240, &FONT_S, s, C_OFF, 1);
+}
+
 /* ---- the splash: a kayaker in pixel art, 48 x 28, each pixel a 4 x 4 square, one colour on black */
 #define ART_W 48u
 #define ART_H 28u
@@ -257,6 +353,13 @@ static void splash(void)
     draw_text_box(0, 214, 240, &FONT_S, "GRAIN SYNTH  v" APP_VER, C_ACC_DIM, 1);
 }
 
+/* ---- the LEDs: a button that does something glows, it lights while what it does is on */
+static void led_fn(uint32_t id, uint32_t on)
+{
+    fm1_led_key(id, on);
+    fm1_led_key_glow(id, !on);
+}
+
 /* ---- MIDI in: from the main loop, and from app_idle while the screen draws (idle_ok) */
 static struct { uint8_t oct, ch, page, cur, mod; int8_t p[GQ_N]; } set;   /* what survives a power-off */
 static uint32_t idle_ok, midi_src, clk_n, clk_t0, clk_bpm, clk_run, clk_beat_ms, pc_want = ~0u;
@@ -279,9 +382,9 @@ static void midi_in(void)
             clk_n++;
             continue;
         }
-        if (st == 0xFAu) { clk_run = 1; clk_n = 0; continue; }   /* START: the next clock is beat 1 */
-        if (st == 0xFBu) { clk_run = 1; continue; }              /* CONTINUE */
-        if (st == 0xFCu) { clk_run = 0; continue; }              /* STOP */
+        if (st == 0xFAu) { clk_run = 1; clk_n = 0; ctl_seq_restart = 1; ctl_seq_run = 1; continue; }   /* START */
+        if (st == 0xFBu) { clk_run = 1; ctl_seq_run = 1; continue; }             /* CONTINUE */
+        if (st == 0xFCu) { clk_run = 0; ctl_seq_run = 0; continue; }             /* STOP */
         if (set.ch && (st & 15u) != set.ch - 1u) continue;      /* not our channel */
         if (ty == 0x90u && d2) { gp_note_on(d1, d2); midi_src = (uint32_t)src; }
         else if (ty == 0x80u || ty == 0x90u) gp_note_off(d1);
@@ -299,6 +402,8 @@ static void app_main(void)
     uint32_t page_drawn = ~0u, cells_drawn = ~0u, wave_page = ~0u, wave_renders = ~0u, wave_morph = ~0u;
     uint32_t wave_t = 0, wave_live = 1, wave_pos = ~0u, saving = 0, save_to = 0, save_drawn = ~0u;
     uint32_t sound_pg = 0, fx_pg = FX_PAGE0;    /* the page left on either side of FX */
+    uint32_t view = V_PAGES, view_drawn = ~0u, t_home = 0, scope_t = 0, line_drawn = ~0u, seq_drawn = ~0u, seq_t = 0;
+    uint32_t cursor = 0, step_in = 0, pat_dirty = 0, arp_last = A_UP, beat_seen = 0, beat_t = 0;
     uint8_t held[27] = {0};                     /* the note each key plays */
 #if BOARD_SMK37
     static const uint8_t WHITE[16] = {0, 2, 4, 6, 7, 9, 11, 12, 14, 16, 18, 19, 21, 23, 24, 26};   /* white key -> key */
@@ -308,6 +413,8 @@ static void app_main(void)
 #endif
     if (blob_load(0, &user, sizeof user))       /* the user presets */
         for (k = 0; k < NUSER; k++) user.used[k] = 0;
+    if (blob_load(1, &pat, sizeof pat) || pat.len < 1u || pat.len > SEQ_MAX || pat.div >= NDIV)   /* the sequence */
+        pat_init(&pat);
     if (settings_load(&set, sizeof set) || (int8_t)set.oct < -2 || (int8_t)set.oct > 2 || set.ch > 16u
         || set.page >= NPAGE || !preset_ok(set.cur)) {
         set.oct = 0, set.ch = 0, set.page = 0, set.cur = 0, set.mod = 0;
@@ -324,7 +431,7 @@ static void app_main(void)
     lcd_fill(0, 0, 240, 240, C_BLACK);
 
     for (;;) {
-        uint32_t keys, down, up, rel, b, lit = 0, out_ch = set.ch ? set.ch - 1u : 0u, st, pg = set.page;
+        uint32_t keys, down, up, rel, b, lit = 0, out_ch = set.ch ? set.ch - 1u : 0u, st, pg = set.page, bpm;
         int32_t oct = (int8_t)set.oct, e;
         uint32_t base = (uint32_t)((int32_t)KEY0 + 12 * oct);
         platform_poll();
@@ -339,8 +446,26 @@ static void app_main(void)
 #else
             uint32_t vel = 100;
 #endif
-            if (down >> k & 1u) { held[k] = (uint8_t)(base + k); gp_note_on(held[k], vel); midi_send(0x90u | out_ch, held[k], vel); }
+            if (down >> k & 1u) {
+                held[k] = (uint8_t)(base + k);
+                gp_note_on(held[k], vel);
+                midi_send(0x90u | out_ch, held[k], vel);
+                if (view == V_SEQ && !saving) {  /* SEQ: the step under the cursor; keys held together make a chord */
+                    step_t *s = &pat.st[cursor % SEQ_MAX];
+                    uint32_t i;
+                    if (!step_in) { step_clear(s); step_in = 1; }
+                    for (i = 0; i < SEQ_CHORD && s->note[i] && s->note[i] != held[k]; i++) ;
+                    if (i < SEQ_CHORD && !s->note[i]) s->note[i] = held[k];
+                    s->vel = (uint8_t)vel;
+                    pat_dirty = 1;
+                    t_change = fm1_ms;
+                }
+            }
             if (up >> k & 1u) { gp_note_off(held[k]); midi_send(0x80u | out_ch, held[k], 0); }
+        }
+        if (step_in && !keys) {                 /* every key of the chord up: the next step */
+            step_in = 0;
+            cursor = (cursor + 1u) % (uint32_t)clamp(pat.len, 1, SEQ_MAX);
         }
 #if BOARD_SMK37
         while ((e = smk_extkey_take()) >= 0) {  /* the keys left and right of the FM-1's 27: key << 8 | velocity */
@@ -364,6 +489,11 @@ static void app_main(void)
         b = fm1_input_edges(&rel);              /* buttons pressed since the last call (bit = button id) */
         if (b & (1u << BTN_OCT_DOWN) && oct > -2) { set.oct = (uint8_t)(oct - 1); dirty = 1; t_change = fm1_ms; }
         if (b & (1u << BTN_OCT_UP) && oct < 2) { set.oct = (uint8_t)(oct + 1); dirty = 1; t_change = fm1_ms; }
+        if (b & (1u << BTN_HOME)) t_home = fm1_ms;
+        if (b & (1u << BTN_PLAY)) {             /* the sequencer: from the top, or stop */
+            if (ctl_seq_run) ctl_seq_run = 0;
+            else { ctl_seq_restart = 1; ctl_seq_run = 1; }
+        }
         if ((e = fm1_enc_take(ENC_ALGORITHM)) != 0) {   /* the MIDI channel */
             int32_t c = (int32_t)set.ch + e;
             set.ch = (uint8_t)(c < 0 ? 0 : c > 16 ? 16 : c);
@@ -382,10 +512,9 @@ static void app_main(void)
                 saving = 0;
                 dirty = 1;
                 t_change = fm1_ms;
-            } else if (b & (1u << BTN_HOME))
+            } else if (rel & (1u << BTN_HOME))
                 saving = 0;
-            if (!saving)                        /* back to the pages: everything again */
-                page_drawn = cells_drawn = status_drawn = midi_drawn = preset_drawn = ~0u;
+            if (!saving) view_drawn = ~0u;      /* back: everything again */
         } else {
             if (e) {                            /* the next preset there is, one a detent */
                 int32_t i = (int32_t)set.cur, d = e < 0 ? -1 : 1, n = e < 0 ? -e : e;
@@ -410,44 +539,85 @@ static void app_main(void)
             if (b & (1u << BTN_SAVE)) {         /* the save screen: the slot of this sound, else the first empty one */
                 saving = 1;
                 save_drawn = ~0u;
+                view_drawn = ~0u;
                 save_to = 0;
                 if (set.cur >= GP_NFACT) save_to = set.cur - GP_NFACT;
                 else while (save_to < NUSER - 1u && user.used[save_to]) save_to++;
             }
+            if (rel & (1u << BTN_HOME) && fm1_ms - t_home < 500u)   /* a short press: the wave and the scope */
+                view = V_HOME;
+            if (b & (1u << BTN_SEQ))
+                view = view == V_SEQ ? V_PAGES : V_SEQ;
+            if (b & (1u << BTN_ARP)) {          /* the arp on (as it was last) or off, and its page */
+                if (gp_p[GQ_AMODE] != A_OFF) { arp_last = (uint32_t)gp_p[GQ_AMODE]; gp_p[GQ_AMODE] = A_OFF; }
+                else gp_p[GQ_AMODE] = (int8_t)arp_last;
+                view = V_PAGES;
+                set.page = (uint8_t)PG_ARP;
+                set.mod = 1;
+                dirty = 1;
+                t_change = fm1_ms;
+            }
+            if (b & (1u << BTN_ENV)) { view = V_PAGES; set.page = (uint8_t)PG_ENV; dirty = 1; t_change = fm1_ms; }
+            if (b & (1u << BTN_LFO)) { view = V_PAGES; set.page = (uint8_t)PG_LFO; dirty = 1; t_change = fm1_ms; }
             if (b & (1u << BTN_FX)) {           /* FX: to the effects' pages and back, each where it was left */
-                if (pg < FX_PAGE0) { sound_pg = pg; set.page = (uint8_t)fx_pg; }
-                else { fx_pg = pg; set.page = (uint8_t)sound_pg; }
-                pg = set.page;
+                if (view != V_PAGES) { if (set.page < FX_PAGE0) { sound_pg = set.page; set.page = (uint8_t)fx_pg; } }
+                else if (set.page < FX_PAGE0) { sound_pg = set.page; set.page = (uint8_t)fx_pg; }
+                else { fx_pg = set.page; set.page = (uint8_t)sound_pg; }
+                view = V_PAGES;
                 dirty = 1;
                 t_change = fm1_ms;
             }
-            if ((e = fm1_enc_take(ENC_SELECT)) != 0) {    /* the page, among the sound's or the effects' */
-                int32_t c = (int32_t)set.page + e, lo = pg < FX_PAGE0 ? 0 : (int32_t)FX_PAGE0;
-                int32_t hi = pg < FX_PAGE0 ? (int32_t)FX_PAGE0 - 1 : (int32_t)NPAGE - 1;
-                set.page = (uint8_t)(c < lo ? lo : c > hi ? hi : c);
-                pg = set.page;
-                dirty = 1;
-                t_change = fm1_ms;
-            }
-            for (k = 0; k < 4u; k++)            /* the page's values */
-                if ((e = fm1_enc_take(ENC_KNOB1 + k)) != 0) {
-                    uint32_t q = pg * 4u + k;
-                    int32_t v, lo = GQ[q].min, hi = GQ[q].max, fmt = GQ[q].fmt;
-                    if (fmt == GF_NONE) continue;
-                    if (fmt == GF_TYPE || fmt == GF_LWAVE || fmt == GF_LDEST || fmt == GF_FTYPE || fmt == GF_VTYPE)   /* a list: round it, a step a detent */
-                        v = (int32_t)(((uint32_t)(gp_p[q] + e % (hi + 1) + (hi + 1))) % (uint32_t)(hi + 1));
-                    else
-                        v = gp_p[q] + enc_fast(k, e);
-                    gp_p[q] = (int8_t)(v < lo ? lo : v > hi ? hi : v);
-                    set.mod = 1;
+            pg = set.page;
+            if (view == V_SEQ) {                /* SEQ: the cursor, a rest, TEMPO LENGTH DIV SWING */
+                uint32_t len = (uint32_t)clamp(pat.len, 1, SEQ_MAX);
+                if ((e = fm1_enc_take(ENC_SELECT)) != 0)
+                    cursor = (uint32_t)(((int32_t)cursor + e % (int32_t)len + (int32_t)len)) % len;
+                if (b & (1u << BTN_REC)) {
+                    step_clear(&pat.st[cursor % SEQ_MAX]);
+                    cursor = (cursor + 1u) % len;
+                    pat_dirty = 1;
+                    t_change = fm1_ms;
+                }
+                if ((e = fm1_enc_take(ENC_KNOB1)) != 0) { pat.tempo = (uint8_t)clamp(pat.tempo + enc_fast(0, e), 40, 240); pat_dirty = 1; t_change = fm1_ms; }
+                if ((e = fm1_enc_take(ENC_KNOB2)) != 0) { pat.len = (uint8_t)clamp(pat.len + e, 1, SEQ_MAX); cursor %= pat.len; pat_dirty = 1; t_change = fm1_ms; }
+                if ((e = fm1_enc_take(ENC_KNOB3)) != 0) { pat.div = (uint8_t)clamp(pat.div + e, 0, NDIV - 1); pat_dirty = 1; t_change = fm1_ms; }
+                if ((e = fm1_enc_take(ENC_KNOB4)) != 0) { pat.swing = (uint8_t)clamp(pat.swing + e, 50, 75); pat_dirty = 1; t_change = fm1_ms; }
+            } else {
+                if ((e = fm1_enc_take(ENC_SELECT)) != 0) {    /* the page, among the sound's or the effects' */
+                    int32_t c = (int32_t)set.page + e, lo = pg < FX_PAGE0 ? 0 : (int32_t)FX_PAGE0;
+                    int32_t hi = pg < FX_PAGE0 ? (int32_t)FX_PAGE0 - 1 : (int32_t)NPAGE - 1;
+                    if (view != V_PAGES) c = (int32_t)set.page;   /* (from HOME: back to the page first) */
+                    set.page = (uint8_t)(c < lo ? lo : c > hi ? hi : c);
+                    pg = set.page;
+                    view = V_PAGES;
                     dirty = 1;
                     t_change = fm1_ms;
                 }
+                for (k = 0; k < 4u; k++)        /* the page's values */
+                    if ((e = fm1_enc_take(ENC_KNOB1 + k)) != 0) {
+                        uint32_t q = pg * 4u + k;
+                        int32_t v, lo = GQ[q].min, hi = GQ[q].max, fmt = GQ[q].fmt;
+                        view = V_PAGES;
+                        if (fmt == GF_NONE) continue;
+                        if (fmt == GF_TYPE || fmt == GF_LWAVE || fmt == GF_LDEST || fmt == GF_FTYPE || fmt == GF_VTYPE
+                            || fmt == GF_ARP || fmt == GF_DIV)   /* a list: round it, a step a detent */
+                            v = (int32_t)(((uint32_t)(gp_p[q] + e % (hi + 1) + (hi + 1))) % (uint32_t)(hi + 1));
+                        else
+                            v = gp_p[q] + enc_fast(k, e);
+                        gp_p[q] = (int8_t)(v < lo ? lo : v > hi ? hi : v);
+                        set.mod = 1;
+                        dirty = 1;
+                        t_change = fm1_ms;
+                    }
+            }
         }
 
         midi_in();
         if (clk_bpm && fm1_ms - clk_t0 > 2000u) clk_bpm = 0, clk_run = 0;   /* the clock has stopped coming */
+        ctl_tempo_ext = clk_bpm >= 40u && clk_bpm <= 240u ? clk_bpm : 0u;   /* a MIDI clock sets the tempo */
+        bpm = ctl_tempo_ext ? ctl_tempo_ext : pat.tempo;
         grain_poll();                           /* a slice of a render, if one is due */
+        if (ui_beat != beat_seen) { beat_seen = ui_beat; beat_t = fm1_ms; }
 
         oct = (int8_t)set.oct;
         base = (uint32_t)((int32_t)KEY0 + 12 * oct);
@@ -456,11 +626,18 @@ static void app_main(void)
                 lit |= 1u << (gpv[k].note - base);
         for (k = 0; k < 27u; k++)
             fm1_led_key(KEY_LED(k), lit >> k & 1u);
-        fm1_led_key(BTN_OCT_DOWN, oct < 0);
-        fm1_led_key(BTN_OCT_UP, oct > 0);
-        fm1_led_key(BTN_SAVE, saving);
-        fm1_led_key(BTN_FX, set.page >= FX_PAGE0);
-        fm1_led_key(BTN_PLAY, clk_run || (clk_bpm && fm1_ms - clk_beat_ms < 80u));   /* lit: running; a blink a beat */
+        led_fn(BTN_OCT_DOWN, oct < 0);
+        led_fn(BTN_OCT_UP, oct > 0);
+        led_fn(BTN_SAVE, saving);
+        led_fn(BTN_HOME, view == V_HOME && !saving);
+        led_fn(BTN_FX, view == V_PAGES && pg >= FX_PAGE0);
+        led_fn(BTN_ENV, view == V_PAGES && pg == PG_ENV);
+        led_fn(BTN_LFO, view == V_PAGES && pg == PG_LFO);
+        led_fn(BTN_ARP, gp_p[GQ_AMODE] != A_OFF);
+        led_fn(BTN_SEQ, view == V_SEQ);
+        led_fn(BTN_PLAY, ctl_seq_run ? fm1_ms - beat_t >= 80u : clk_bpm && fm1_ms - clk_beat_ms < 80u);   /* a blink a beat */
+        if (view == V_SEQ) led_fn(BTN_REC, 0);  /* (REC: a rest, on the SEQ screen only) */
+        else { fm1_led_key(BTN_REC, 0); fm1_led_key_glow(BTN_REC, 0); }
 #if BOARD_SMK37
         for (k = 0; k < 16u; k++) {             /* a pad glows orange while its key sounds */
             uint32_t w = k < 8u ? k + 8u : k - 8u, on = lit >> WHITE[w] & 1u;
@@ -470,28 +647,50 @@ static void app_main(void)
 #endif
 
         idle_ok = 1;                            /* the drawing below may read MIDI meanwhile (LCD_IDLE) */
+        st = saving ? 9u : view;
+        if (st != view_drawn) {                 /* another screen: everything under the name again */
+            view_drawn = st;
+            lcd_fill(0, 28, 240, 212, C_BLACK);
+            page_drawn = cells_drawn = status_drawn = midi_drawn = line_drawn = seq_drawn = wave_page = ~0u;
+        }
         if ((st = set.cur | (uint32_t)set.mod << 8) != preset_drawn) { preset_drawn = st; draw_preset(set.cur, set.mod); }
         if (saving) {
             if (page_drawn != ~1u) { page_drawn = ~1u; draw_text_box(0, 28, 240, &FONT_L, "SAVE", C_ACC, 1); }
             if ((st = save_to | (uint32_t)user.used[save_to] << 8) != save_drawn) { save_drawn = st; draw_save(save_to); }
+        } else if (view == V_SEQ) {
+            uint32_t play = ctl_seq_run ? ui_seq_step : ~0u, sum = cursor | play << 8, i;
+            if (page_drawn != ~2u) { page_drawn = ~2u; draw_text_box(0, 28, 240, &FONT_L, "SEQ", C_WHITE, 1); }
+            for (i = 0; i < SEQ_MAX; i++) sum = sum * 31u + pat.st[i].note[0] + pat.st[i].note[1] * 7u;
+            sum += (uint32_t)pat.len * 977u;
+            if (sum != seq_drawn && fm1_ms - seq_t >= 30u) { seq_drawn = sum; seq_t = fm1_ms; draw_seq(cursor, play); }
+            if ((st = bpm | (uint32_t)pat.len << 8 | (uint32_t)pat.div << 16 | (uint32_t)pat.swing << 20) != line_drawn) {
+                line_drawn = st;
+                draw_seq_lines(bpm);
+            }
         } else {
-            uint32_t sum = pg, live = 0;        /* the page's values, as one number to compare */
-            if (pg != page_drawn) { page_drawn = pg; draw_text_box(0, 28, 240, &FONT_L, PAGE_NAME[pg], C_WHITE, 1); }
-            for (k = 0; k < 4u; k++) sum = sum * 131u + (uint8_t)gp_p[pg * 4u + k];
-            if (sum != cells_drawn) { cells_drawn = sum; draw_cells(pg); }
-            if ((st = (uint32_t)(oct + 2) | (uint32_t)set.ch << 4) != status_drawn) { status_drawn = st; draw_status(oct, set.ch); }
+            uint32_t sum = pg, live = 0, wpg = view == V_HOME ? 2u : pg;
+            if (view == V_HOME) {
+                if (page_drawn != ~3u) { page_drawn = ~3u; draw_text_box(0, 28, 240, &FONT_L, "KAYAK", C_ACC, 1); }
+                if (fm1_ms - scope_t >= 40u) { scope_t = fm1_ms; draw_scope(); }   /* 25 frames a second */
+                if ((st = (uint32_t)gp_p[GQ_AMODE] | ctl_seq_run << 4 | bpm << 8) != line_drawn) { line_drawn = st; draw_home_line(ctl_seq_run, bpm); }
+            } else {
+                if (pg != page_drawn) { page_drawn = pg; draw_text_box(0, 28, 240, &FONT_L, PAGE_NAME[pg], C_WHITE, 1); }
+                for (k = 0; k < 4u; k++) sum = sum * 131u + (uint8_t)gp_p[pg * 4u + k];
+                if (sum != cells_drawn) { cells_drawn = sum; draw_cells(pg); }
+                if ((st = (uint32_t)(oct + 2) | (uint32_t)set.ch << 4) != status_drawn) { status_drawn = st; draw_status(oct, set.ch); }
+            }
             if ((st = midi_src | clk_bpm << 2 | clk_run << 12) != midi_drawn) { midi_drawn = st; draw_midi(midi_src, clk_bpm, clk_run); }
             for (k = 0; k < GP_NG; k++) live |= gpg[k].owner;
             st = (uint32_t)(uint8_t)gp_p[GQ_MORPH];
-            if (pg != wave_page || grs.renders != wave_renders || (pg >= 2u && st != wave_morph)) {
-                wave_page = pg; wave_renders = grs.renders; wave_morph = st;
-                wave_take(pg);
+            if (wpg != wave_page || grs.renders != wave_renders || (wpg >= 2u && st != wave_morph)) {
+                wave_page = wpg; wave_renders = grs.renders; wave_morph = st;
+                wave_take(wpg);
                 wave_live = 1;
             }
             st = (uint32_t)gp_pos_view | (uint32_t)(uint8_t)gp_p[GQ_SPRD] << 16;
-            if (pg >= 2u && st != wave_pos) wave_pos = st, wave_live |= fm1_ms - wave_t >= 50u;
+            if (wpg >= 2u && st != wave_pos) wave_pos = st, wave_live |= fm1_ms - wave_t >= 50u;
             if (live) wave_live |= fm1_ms - wave_t >= 50u;   /* the grains move: 20 frames a second */
-            if (wave_live) { wave_live = 0; wave_t = fm1_ms; draw_wave(pg); }
+            if (wave_live) { wave_live = 0; wave_t = fm1_ms; draw_wave(wpg); }
         }
         idle_ok = 0;
 
@@ -499,6 +698,10 @@ static void app_main(void)
             for (k = 0; k < GQ_N; k++) set.p[k] = gp_p[k];
             settings_save(&set, sizeof set);
             dirty = 0;
+        }
+        if (pat_dirty && !ctl_seq_run && !step_in && gp_quiet() && fm1_ms - t_change > 2000u) {   /* the sequence */
+            blob_save(1, &pat, sizeof pat);
+            pat_dirty = 0;
         }
     }
 }
