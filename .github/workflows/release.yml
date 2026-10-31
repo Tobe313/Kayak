@@ -66,6 +66,13 @@ jobs:
           path: build/kayak*.fwsc
           if-no-files-found: error
 
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kayak-host-preview      # the host run of tests/scripts/grain.txt: its screens and its sound
+          path: |
+            build/host/kayak-*.png
+            build/host/kayak.wav
+
       - name: Attest the packages (tags only)
         if: github.ref_type == 'tag'
         uses: actions/attest-build-provenance@v2
