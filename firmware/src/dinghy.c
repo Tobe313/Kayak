@@ -88,7 +88,7 @@ static void draw_wave(uint32_t pg)
     cv_blit(0, WV_Y);
 }
 
-static void fmt_int(char *s, int32_t v, int sign)
+static void fmt_val(char *s, int32_t v, int sign)
 {
     char t[8];
     uint32_t n = 0, u = (uint32_t)(v < 0 ? -v : v);
@@ -108,7 +108,7 @@ static void draw_cells(uint32_t pg)
         char s[8];
         const char *val = s;
         if (q == GQ_TYPE_A || q == GQ_TYPE_B) val = GS_TYPE_NAMES[v];
-        else fmt_int(s, v, q == GQ_PITCH || q == GQ_SCAN);
+        else fmt_val(s, v, q == GQ_PITCH || q == GQ_SCAN);
         cv_text(x0 + (60 - text_w(&FONT_S, GQ[q].name)) / 2, 2, &FONT_S, GQ[q].name, C_OFF);
         cv_text(x0 + (60 - text_w(&FONT_S, val)) / 2, 22, &FONT_S, val, C_WHITE);
         w = (v - GQ[q].min) * 48 / (GQ[q].max - GQ[q].min);
