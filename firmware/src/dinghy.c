@@ -6,8 +6,8 @@
  *
  *   keys       play the grains, 8 voices; the notes go out over USB-MIDI too, on the MIDI channel
  *   SELECT     the page: SRC A, SRC B (TYPE TONE MOTION SEED), GRAIN (SIZE DENS POS SPRD),
- *              GRAIN+ (MORPH RAND PITCH SCAN), FILTER (TYPE CUT RES DRIVE: OberVave's), ENV (KTRK SEM ATK REL),
- *              LFO (RATE WAVE DEPTH DEST), ARP (MODE DIV OCTAVES GATE)
+ *              GRAIN+ (MORPH RAND PITCH SCAN), FILTER (TYPE CUT RES DRIVE: OberVave's), FILTER+ (KTRK SEM),
+ *              ENV (ATK DEC SUS REL), LFO (RATE WAVE DEPTH DEST); ARP (MODE DIV OCTAVES GATE) by the ARP button only
  *   KNOB 1..4  the page's four values; the faster the turn, the bigger the step
  *   FX         the effects' pages and back (lit there): CHORUS (RATE DEPTH MIX), DELAY (TIME FEEDBK TONE MIX),
  *              REVERB (SIZE DAMP PRE MIX), DRIVE (TYPE AMOUNT TONE MIX): OberVave's
@@ -45,12 +45,20 @@ static void app_audio(int32_t *out, uint32_t n)
 }
 
 /* ---- the pages: eight of the sound, then four of the effects (FX goes there and back), four knobs each */
-#define NPAGE 12u
-#define FX_PAGE0 (GQ_FX0 / 4u)
-#define PG_ENV (GQ_KTRK / 4u)
-#define PG_LFO (GQ_LRATE / 4u)
-#define PG_ARP (GQ_AMODE / 4u)
-static const char *const PAGE_NAME[NPAGE] = {"SRC A", "SRC B", "GRAIN", "GRAIN+", "FILTER", "ENV", "LFO", "ARP",
+#define NPAGE 13u
+#define FX_PAGE0 9u
+#define PG_ENV 6u
+#define PG_LFO 7u
+#define PG_ARP 8u                               /* (the last of the sound's: SELECT stops before it, ARP opens it) */
+#define QX 0xFFu                                /* a page's empty place */
+static const uint8_t PAGE_Q[NPAGE][4] = {      /* the knobs of each page */
+    {GQ_TYPE_A, GQ_TONE_A, GQ_MOTION_A, GQ_SEED_A}, {GQ_TYPE_B, GQ_TONE_B, GQ_MOTION_B, GQ_SEED_B},
+    {GQ_SIZE, GQ_DENS, GQ_POS, GQ_SPRD}, {GQ_MORPH, GQ_RAND, GQ_PITCH, GQ_SCAN},
+    {GQ_FTYPE, GQ_CUT, GQ_RES, GQ_FDRIVE}, {GQ_KTRK, GQ_FMORPH, QX, QX}, {GQ_ATK, GQ_DEC, GQ_SUS, GQ_REL},
+    {GQ_LRATE, GQ_LWAVE, GQ_LDEPTH, GQ_LDEST}, {GQ_AMODE, GQ_ADIV, GQ_AOCT, GQ_AGATE},
+    {GQ_CRATE, GQ_CDEPTH, GQ_CMIX, QX}, {GQ_DTIME, GQ_DFB, GQ_DTONE, GQ_DMIX}, {GQ_RSIZE, GQ_RDAMP, GQ_RPRE, GQ_RMIX},
+    {GQ_VTYPE, GQ_VAMT, GQ_VTONE, GQ_VMIX}};
+static const char *const PAGE_NAME[NPAGE] = {"SRC A", "SRC B", "GRAIN", "GRAIN+", "FILTER", "FILTER+", "ENV", "LFO", "ARP",
                                              "FX CHORUS", "FX DELAY", "FX REVERB", "FX DRIVE"};
 enum { V_PAGES, V_HOME, V_SEQ };                /* what the screen shows */
 
@@ -162,10 +170,10 @@ static void draw_cells(uint32_t pg)
     uint32_t c;
     cv_begin(240, 56, C_BLACK);
     for (c = 0; c < 4u; c++) {
-        uint32_t q = pg * 4u + c;
+        uint32_t q = PAGE_Q[pg][c];
         int32_t x0 = (int32_t)c * 60, v = gp_p[q], w;
         char s[12];
-        if (!GQ[q].name) continue;              /* (a page with three knobs) */
+        if (q == QX) continue;                  /* (a page with fewer knobs) */
         gq_text(q, v, s);
         cv_text(x0 + (60 - text_w(&FONT_S, GQ[q].name)) / 2, 2, &FONT_S, GQ[q].name, C_OFF);
         cv_text(x0 + (60 - text_w(&FONT_S, s)) / 2, 22, &FONT_S, s, C_WHITE);
@@ -411,11 +419,29 @@ static void app_main(void)
     smk_pw_t wheel = {0};
     smk_pad_events = 1;                         /* the pads as events (smk_pad_take): they play here, lit while they sound */
 #endif
-    if (blob_load(0, &user, sizeof user))       /* the user presets */
+    if (blob_load(0, &user, sizeof user)) {     /* the user presets; 0.4's (GQ_N_V04 values a sound) read again */
+        static struct { uint8_t used[NUSER]; int8_t p[NUSER][GQ_N_V04]; } u04;
         for (k = 0; k < NUSER; k++) user.used[k] = 0;
+        if (!blob_load(0, &u04, sizeof u04))
+            for (k = 0; k < NUSER; k++) {
+                uint32_t j;
+                user.used[k] = u04.used[k];
+                for (j = 0; j < GQ_N; j++) user.p[k][j] = j < GQ_N_V04 ? u04.p[k][j] : GQ[j].def;
+            }
+    }
     if (blob_load(1, &pat, sizeof pat) || pat.len < 1u || pat.len > SEQ_MAX || pat.div >= NDIV)   /* the sequence */
         pat_init(&pat);
-    if (settings_load(&set, sizeof set) || (int8_t)set.oct < -2 || (int8_t)set.oct > 2 || set.ch > 16u
+    k = !settings_load(&set, sizeof set);
+    if (!k) {                                   /* 0.4's settings: its sound again, the pages from the first */
+        static struct { uint8_t oct, ch, page, cur, mod; int8_t p[GQ_N_V04]; } s04;
+        if (!settings_load(&s04, sizeof s04)) {
+            uint32_t j;
+            set.oct = s04.oct, set.ch = s04.ch, set.page = 0, set.cur = s04.cur, set.mod = s04.mod;
+            for (j = 0; j < GQ_N; j++) set.p[j] = j < GQ_N_V04 ? s04.p[j] : GQ[j].def;
+            k = 1;
+        }
+    }
+    if (!k || (int8_t)set.oct < -2 || (int8_t)set.oct > 2 || set.ch > 16u
         || set.page >= NPAGE || !preset_ok(set.cur)) {
         set.oct = 0, set.ch = 0, set.page = 0, set.cur = 0, set.mod = 0;
         preset_load(0);
@@ -585,7 +611,7 @@ static void app_main(void)
             } else {
                 if ((e = fm1_enc_take(ENC_SELECT)) != 0) {    /* the page, among the sound's or the effects' */
                     int32_t c = (int32_t)set.page + e, lo = pg < FX_PAGE0 ? 0 : (int32_t)FX_PAGE0;
-                    int32_t hi = pg < FX_PAGE0 ? (int32_t)FX_PAGE0 - 1 : (int32_t)NPAGE - 1;
+                    int32_t hi = pg < FX_PAGE0 ? (int32_t)PG_ARP - 1 : (int32_t)NPAGE - 1;   /* (not ARP: its button) */
                     if (view != V_PAGES) c = (int32_t)set.page;   /* (from HOME: back to the page first) */
                     set.page = (uint8_t)(c < lo ? lo : c > hi ? hi : c);
                     pg = set.page;
@@ -595,10 +621,11 @@ static void app_main(void)
                 }
                 for (k = 0; k < 4u; k++)        /* the page's values */
                     if ((e = fm1_enc_take(ENC_KNOB1 + k)) != 0) {
-                        uint32_t q = pg * 4u + k;
-                        int32_t v, lo = GQ[q].min, hi = GQ[q].max, fmt = GQ[q].fmt;
+                        uint32_t q = PAGE_Q[pg][k];
+                        int32_t v, lo, hi, fmt;
                         view = V_PAGES;
-                        if (fmt == GF_NONE) continue;
+                        if (q == QX) continue;
+                        lo = GQ[q].min, hi = GQ[q].max, fmt = GQ[q].fmt;
                         if (fmt == GF_TYPE || fmt == GF_LWAVE || fmt == GF_LDEST || fmt == GF_FTYPE || fmt == GF_VTYPE
                             || fmt == GF_ARP || fmt == GF_DIV)   /* a list: round it, a step a detent */
                             v = (int32_t)(((uint32_t)(gp_p[q] + e % (hi + 1) + (hi + 1))) % (uint32_t)(hi + 1));
@@ -675,7 +702,7 @@ static void app_main(void)
                 if ((st = (uint32_t)gp_p[GQ_AMODE] | ctl_seq_run << 4 | bpm << 8) != line_drawn) { line_drawn = st; draw_home_line(ctl_seq_run, bpm); }
             } else {
                 if (pg != page_drawn) { page_drawn = pg; draw_text_box(0, 28, 240, &FONT_L, PAGE_NAME[pg], C_WHITE, 1); }
-                for (k = 0; k < 4u; k++) sum = sum * 131u + (uint8_t)gp_p[pg * 4u + k];
+                for (k = 0; k < 4u; k++) sum = sum * 131u + (uint8_t)(PAGE_Q[pg][k] == QX ? 0 : gp_p[PAGE_Q[pg][k]]);
                 if (sum != cells_drawn) { cells_drawn = sum; draw_cells(pg); }
                 if ((st = (uint32_t)(oct + 2) | (uint32_t)set.ch << 4) != status_drawn) { status_drawn = st; draw_status(oct, set.ch); }
             }

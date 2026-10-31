@@ -46,9 +46,11 @@ enum {
     GQ_DTIME, GQ_DFB, GQ_DTONE, GQ_DMIX,
     GQ_RSIZE, GQ_RDAMP, GQ_RPRE, GQ_RMIX,
     GQ_VTYPE, GQ_VAMT, GQ_VTONE, GQ_VMIX,
+    GQ_DEC, GQ_SUS,                              /* (0.41) the envelope's decay and sustain: after the rest, so the
+                                                  * presets and settings of 0.4 (GQ_N_V04 values) read again */
     GQ_N
 };
-#define GQ_FX0 GQ_CRATE                         /* the first knob of the effects' pages */
+#define GQ_N_V04 48u                            /* the values a sound had in 0.4 */
 /* how a value reads on the screen (gq_text) */
 enum { GF_INT, GF_TYPE, GF_PCT, GF_SIGNED, GF_SEMI, GF_SIZE, GF_DENS, GF_CUT, GF_TIME, GF_LFOHZ, GF_LWAVE, GF_LDEST,
        GF_FTYPE, GF_VTYPE, GF_DLYMS, GF_NONE, GF_ARP, GF_DIV };
@@ -79,6 +81,7 @@ static const gq_desc_t GQ[GQ_N] = {
     {"SIZE", 0, 127, 100, GF_PCT}, {"DAMP", 0, 127, 75, GF_PCT}, {"PRE", 0, 127, 30, GF_PCT}, {"MIX", 0, 127, 0, GF_PCT},
     {"TYPE", 0, NDV - 1, DV_OVERDRIVE, GF_VTYPE}, {"AMOUNT", 0, 127, 60, GF_PCT}, {"TONE", 0, 127, 90, GF_PCT},
     {"MIX", 0, 127, 0, GF_PCT},
+    {"DEC", 0, 127, 64, GF_TIME}, {"SUS", 0, 127, 127, GF_PCT},
 };
 static volatile int8_t gp_p[GQ_N];
 static void gp_defaults(void)
@@ -97,23 +100,23 @@ static const int8_t GP_FACT[GP_NFACT][GQ_N] = {
     /* A: TYPE TONE MOTION SEED | B | SIZE DENS POS SPRD | MORPH RAND PITCH SCAN | FILTER: TYPE CUT RES DRIVE |
      * KTRK SEM ATK REL | LFO: RATE WAVE DEPTH DEST |
      * ARP: MODE DIV OCTAVES GATE | CHORUS: RATE DEPTH MIX - | DELAY: TIME FB TONE MIX |
-     * REVERB: SIZE DAMP PRE MIX | DRIVE: TYPE AMOUNT TONE MIX */
+     * REVERB: SIZE DAMP PRE MIX | DRIVE: TYPE AMOUNT TONE MIX | DEC SUS (0.41) */
     {GT_DRONE, 64, 64, 0, GT_BELL, 64, 64, 0, 92, 88, 50, 40, 40, 14, 0, 12, F_LP12, 100, 20, 0, 64, 64, 40, 90,
-     30, 0, 50, GD_MORPH, A_OFF, D_16, 1, 64, 30, 40, 40, 0, 90, 45, 50, 25, 110, 70, 40, 60, DV_OVERDRIVE, 40, 90, 0},
+     30, 0, 50, GD_MORPH, A_OFF, D_16, 1, 64, 30, 40, 40, 0, 90, 45, 50, 25, 110, 70, 40, 60, DV_OVERDRIVE, 40, 90, 0, 64, 127},
     {GT_BELL, 64, 64, 0, GT_BELL, 104, 104, 11, 70, 100, 30, 30, 64, 24, 12, 8, F_LP12, 110, 10, 0, 64, 64, 30, 96,
-     45, 0, 70, GD_MORPH, A_OFF, D_16, 1, 64, 40, 50, 30, 0, 100, 55, 60, 35, 120, 60, 50, 70, DV_OVERDRIVE, 40, 90, 0},
+     45, 0, 70, GD_MORPH, A_OFF, D_16, 1, 64, 40, 50, 30, 0, 100, 55, 60, 35, 120, 60, 50, 70, DV_OVERDRIVE, 40, 90, 0, 64, 127},
     {GT_BREATH, 64, 64, 0, GT_VOWEL, 64, 20, 3, 92, 88, 50, 40, 64, 10, 0, 12, F_SEM, 96, 30, 0, 64, 30, 50, 96,
-     25, 1, 40, GD_POS, A_OFF, D_16, 1, 64, 25, 60, 50, 0, 80, 40, 40, 0, 115, 80, 40, 55, DV_OVERDRIVE, 40, 90, 0},
+     25, 1, 40, GD_POS, A_OFF, D_16, 1, 64, 25, 60, 50, 0, 80, 40, 40, 0, 115, 80, 40, 55, DV_OVERDRIVE, 40, 90, 0, 64, 127},
     {GT_VOWEL, 28, 20, 3, GT_BREATH, 28, 20, 3, 108, 72, 40, 0, 0, 10, 0, 5, F_LP24, 92, 10, 0, 64, 64, 60, 100,
-     20, 1, 30, GD_MORPH, A_OFF, D_16, 1, 64, 30, 40, 0, 0, 110, 60, 40, 20, 127, 50, 60, 75, DV_OVERDRIVE, 40, 90, 0},
+     20, 1, 30, GD_MORPH, A_OFF, D_16, 1, 64, 30, 40, 0, 0, 110, 60, 40, 20, 127, 50, 60, 75, DV_OVERDRIVE, 40, 90, 0, 64, 127},
     {GT_PLUCK, 64, 100, 0, GT_METAL, 64, 64, 0, 60, 80, 20, 30, 0, 10, 0, 0, F_LP12, 110, 0, 0, 80, 64, 2, 70,
-     50, 2, 40, GD_MORPH, A_UP, D_16, 2, 50, 30, 40, 25, 0, 70, 50, 60, 40, 90, 70, 20, 30, DV_OVERDRIVE, 40, 90, 0},
+     50, 2, 40, GD_MORPH, A_UP, D_16, 2, 50, 30, 40, 25, 0, 70, 50, 60, 40, 90, 70, 20, 30, DV_OVERDRIVE, 40, 90, 0, 60, 40},
     {GT_CHIRP, 64, 64, 0, GT_SWEEP, 64, 64, 0, 48, 110, 50, 60, 64, 60, 0, 20, F_BP12, 120, 40, 20, 64, 64, 20, 80,
-     60, 4, 50, GD_CUT, A_OFF, D_16, 1, 64, 60, 70, 40, 0, 60, 60, 70, 40, 100, 70, 20, 35, DV_DIST, 50, 80, 20},
+     60, 4, 50, GD_CUT, A_OFF, D_16, 1, 64, 60, 70, 40, 0, 60, 60, 70, 40, 100, 70, 20, 35, DV_DIST, 50, 80, 20, 64, 127},
     {GT_SWEEP, 104, 104, 11, GT_PLUCK, 104, 104, 11, 30, 118, 50, 80, 40, 40, 0, -24, F_LP24, 100, 70, 40, 90, 64, 5,
-     60, 70, 1, 70, GD_CUT, A_OFF, D_16, 1, 64, 30, 40, 0, 0, 75, 65, 50, 45, 80, 70, 20, 25, DV_DIST, 60, 70, 35},
+     60, 70, 1, 70, GD_CUT, A_OFF, D_16, 1, 64, 30, 40, 0, 0, 75, 65, 50, 45, 80, 70, 20, 25, DV_DIST, 60, 70, 35, 50, 70},
     {GT_METAL, 64, 64, 0, GT_DRONE, 64, 64, 0, 24, 112, 64, 100, 64, 90, 0, 0, F_HP12, 60, 30, 30, 64, 64, 2, 50,
-     80, 3, 60, GD_SIZE, A_OFF, D_16, 1, 64, 30, 40, 0, 0, 40, 70, 90, 40, 70, 60, 10, 25, DV_CRUSH, 70, 100, 50},
+     80, 3, 60, GD_SIZE, A_OFF, D_16, 1, 64, 30, 40, 0, 0, 40, 70, 90, 40, 70, 60, 10, 25, DV_CRUSH, 70, 100, 50, 40, 80},
 };
 
 /* 2^(i/192), Q16: pitch ratios in 1/16 semitones, d16 >= -3072 (eng_grain.c's) */
@@ -220,6 +223,7 @@ typedef struct {
     int32_t lvl;                 /* the velocity, Q15 */
     uint32_t age;
     uint8_t note;
+    uint8_t dec;                 /* the envelope: 0 the attack, 1 the decay to the sustain */
 } gp_voice_t;
 static gp_grain_t gpg[GP_NG];
 static gp_voice_t gpv[GP_NV];
@@ -391,6 +395,7 @@ static void gp_audio(int32_t *out, uint32_t n)
 {
     const int16_t *A = gbuf[gsel[0]], *B = gbuf[gsel[1]];
     int32_t acc[CTL], mono[CTL], atk = gp_env_step(gp_p[GQ_ATK]), rel = gp_env_step(gp_p[GQ_REL]);
+    int32_t dcy = gp_env_step(gp_p[GQ_DEC]), sus = gp_p[GQ_SUS] * 258;   /* the decay's step, the sustain level Q15 */
     int32_t scan = gp_scan_inc(gp_p[GQ_SCAN]), ft = gp_p[GQ_FTYPE], res = gp_p[GQ_RES], fm = gp_p[GQ_FMORPH];
     int32_t ldep = gp_p[GQ_LDEPTH], ldst = gp_p[GQ_LDEST], lwave = gp_p[GQ_LWAVE], d = gp_p[GQ_FDRIVE], drv, ktrk;
     uint32_t b, i, v, k, nact = 0, iv, share, linc = gl_hz100(gp_p[GQ_LRATE]) * 31166u;   /* a block's turn of the LFO:
@@ -448,7 +453,13 @@ static void gp_audio(int32_t *out, uint32_t n)
             uint32_t mine = 0;
             if (!V->gate && !V->env)
                 continue;
-            e1 = V->gate ? (e0 + atk > 32767 ? 32767 : e0 + atk) : (e0 - rel < 0 ? 0 : e0 - rel);
+            if (!V->gate)                                /* ADSR: the release, from wherever it is */
+                e1 = e0 - rel < 0 ? 0 : e0 - rel;
+            else if (!V->dec) {                          /* the attack, to full */
+                e1 = e0 + atk;
+                if (e1 >= 32767) { e1 = 32767; V->dec = 1; }
+            } else                                       /* the decay, to the sustain (or up to it, SUS turned up) */
+                e1 = e0 > sus ? (e0 - dcy < sus ? sus : e0 - dcy) : (e0 + dcy > sus ? sus : e0 + dcy);
             V->env = e1;
             de = (e1 - e0) / (int32_t)m;
             m0 = V->morph;
@@ -517,6 +528,7 @@ static void gp_voice_on(uint32_t note, uint32_t vel)
     gpv[pick].age = ++gp_ages;
     gpv[pick].lvl = (int32_t)(vel * GP_VOICE / 127u);
     gpv[pick].next = 0;                         /* the first grain at once */
+    gpv[pick].dec = 0;                          /* the attack again, from where the level is */
     gpv[pick].gate = 1;
 }
 static void gp_voice_off(uint32_t note)

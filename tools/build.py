@@ -321,10 +321,10 @@ def main():
         suffix += "-" + model
     PRODUCT = BOARD_PREFIX[BOARD] + KAYAK_ID
     name = f"kayak{suffix}.fwsc"
-    if a.release:                   # one digit each (X.Y; a .Z only in the text)
-        m = re.fullmatch(r"(\d)\.(\d)(\.\d)?(-[A-Za-z0-9]+)?", a.release)
+    if a.release:                   # X.Y or X.YY (Kayak's 0.41; a .Z only in the text)
+        m = re.fullmatch(r"(\d)\.(\d{1,2})(\.\d)?(-[A-Za-z0-9]+)?", a.release)
         if not m:
-            raise SystemExit(f"--release {a.release}: use X.Y, X.Y.Z or X.Y-suffix, one digit each")
+            raise SystemExit(f"--release {a.release}: use X.Y, X.YY, X.Y.Z or X.Y-suffix")
         VERSION = m[1] + "." + m[2] + (m[3] or "")
         name = f"kayak-{a.release}{suffix}.fwsc"
     fm1pkg_make.SDK = a.sdk

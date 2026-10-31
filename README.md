@@ -10,7 +10,7 @@ CHIRP SWEEP VOWEL METAL), TONE, MOTION, SEED. Up to 16 grains, shared by 8 voice
 
 | control | |
 | --- | --- |
-| SELECT | the page: **SRC A**, **SRC B** (TYPE TONE MOTION SEED), **GRAIN** (SIZE DENS POS SPRD), **GRAIN+** (MORPH RAND PITCH SCAN), **FILTER** (TYPE CUT RES DRIVE), **ENV** (KTRK SEM ATK REL), **LFO** (RATE WAVE DEPTH DEST), **ARP** (MODE DIV OCTAVES GATE) |
+| SELECT | the page: **SRC A**, **SRC B** (TYPE TONE MOTION SEED), **GRAIN** (SIZE DENS POS SPRD), **GRAIN+** (MORPH RAND PITCH SCAN), **FILTER** (TYPE CUT RES DRIVE), **FILTER+** (KTRK SEM), **ENV** (ATK DEC SUS REL: an ADSR), **LFO** (RATE WAVE DEPTH DEST); the **ARP** page (MODE DIV OCTAVES GATE) opens with the ARP button only |
 | FX | the effects' pages and back (FX lit there): **CHORUS** (RATE DEPTH MIX), **DELAY** (TIME FEEDBK TONE MIX), **REVERB** (SIZE DAMP PRE MIX), **DRIVE** (TYPE AMOUNT TONE MIX); SELECT moves among them |
 | ENV, LFO | straight to their page |
 | ARP | the arpeggiator on (lit, as it was last) or off, and its page: UP DOWN UP/DN RANDOM PLAYED, 1/4 .. 1/32T, 1..4 octaves |
