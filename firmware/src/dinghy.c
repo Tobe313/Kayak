@@ -313,59 +313,24 @@ static void draw_seq_lines(uint32_t bpm)        /* the knobs: TEMPO LENGTH, DIV 
     draw_text_box(0, 222, 240, &FONT_S, s, C_OFF, 1);
 }
 
-/* ---- the splash: a kayaker in pixel art, 48 x 28, each pixel a 4 x 4 square, one colour on black */
-#define ART_W 48u
-#define ART_H 28u
-#define ART_PX 4u
-static const char *const KAYAK_ART[ART_H] = {
-    "..........................................####..",
-    "..........................###............#####..",
-    ".........................#####..........#####...",
-    ".........................#####.........#####....",
-    ".........................#####........#####.....",
-    ".........................#####.......#####......",
-    "..........................###.....###...........",
-    "..................................###...........",
-    ".........................####...###.............",
-    ".........................#########..............",
-    "........................#########...............",
-    "........................#######.................",
-    "........................######..................",
-    "........................#####...................",
-    ".......................#####..................#.",
-    ".......................#####...........#######..",
-    "......................######.....############...",
-    "....................########################....",
-    "...................#######################......",
-    "..............###########################.......",
-    ".......#############################............",
-    ".#############################..................",
-    "...#####################........................",
-    "........#######.................................",
-    "..........####..................................",
-    ".........#####..................................",
-    "........#####...................................",
-    "........####....................................",
-};
+/* ---- the splash: the kayaker drawn smooth with a close shadow, KAYAK under it (firmware/gen/kayak_splash.h, made
+ * by tools/make_splash.ps1: RGB565 run-length coded), then the version line */
+#include "kayak_splash.h"
 static void splash(void)
 {
-    uint32_t half, r, x, x0 = (240u - ART_W * ART_PX) / 2u;
+    uint32_t y0, i = 0, left = 0;
+    uint16_t col = 0;
     lcd_fill(0, 0, 240, 240, C_BLACK);
-    for (half = 0; half < 2u; half++) {         /* two strips of 14 rows (240 x 56: the canvas) */
-        cv_begin(240, ART_H / 2u * ART_PX, C_BLACK);
-        for (r = 0; r < ART_H / 2u; r++)
-            for (x = 0; x < ART_W; x++)
-                if (KAYAK_ART[half * ART_H / 2u + r][x] == '#')
-                    cv_rect((int32_t)(x0 + x * ART_PX), (int32_t)(r * ART_PX), ART_PX, ART_PX, C_ACC);
-        cv_blit(0, 24u + half * ART_H / 2u * ART_PX);
+    for (y0 = 0; y0 < SPLASH_H; y0 += 64u) {   /* strips of 64 rows (240 x 64: the canvas) */
+        uint32_t h = SPLASH_H - y0 < 64u ? SPLASH_H - y0 : 64u, k;
+        cv_begin(240, h, C_BLACK);
+        for (k = 0; k < 240u * h; k++) {
+            if (!left) { left = SPLASH_RLE[i]; col = SPLASH_RLE[i + 1u]; i += 2u; }
+            cv_px[k] = swap16(col);
+            left--;
+        }
+        cv_blit(0, y0);
     }
-    cv_begin(240, 12, C_BLACK);                 /* the water: two rows of dashes, offset */
-    for (x = 0; x < 240u / 16u; x++) {
-        cv_rect((int32_t)(x * 16u + 4u), 0, 8, ART_PX, C_ACC);
-        cv_rect((int32_t)(x * 16u + 12u), 8, 8, ART_PX, C_ACC);
-    }
-    cv_blit(0, 24u + ART_H * ART_PX + 6u);
-    draw_text_box(0, 172, 240, &FONT_L, "KAYAK", C_ACC, 1);
     draw_text_box(0, 214, 240, &FONT_S, "GRAIN SYNTH  v" APP_VER, C_ACC_DIM, 1);
 }
 
