@@ -262,11 +262,11 @@ static void draw_home_line(uint32_t run, uint32_t bpm)
     char s[40], *p = s;
     gq_put_str(&p, "ARP ");
     gq_put_str(&p, ARP_NAMES[clamp(gp_p[GQ_AMODE], 0, NARPMODE - 1)]);
-    gq_put_str(&p, run ? "  SEQ PLAY  " : "  SEQ STOP  ");
+    gq_put_str(&p, run ? "  PLAY " : "  STOP ");     /* (at most 24 characters: 240 px of FONT_S) */
     gq_put_dec(&p, bpm);
     gq_put_str(&p, " BPM");
     *p = 0;
-    draw_text_box(0, 206, 240, &FONT_S, s, C_OFF, 1);
+    draw_text_box(0, 204, 240, &FONT_S, s, C_OFF, 1);
 }
 
 /* SEQ: the steps of the cursor's bar of 16, 4 x 4 cells of 60 x 32: the note (a chord: its first and a +), the cursor

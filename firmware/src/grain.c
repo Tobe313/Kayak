@@ -76,7 +76,7 @@ static const gq_desc_t GQ[GQ_N] = {
     {"KTRK", 0, 127, 64, GF_PCT}, {"SEM", 0, 127, 64, GF_PCT}, {"ATK", 0, 127, 30, GF_TIME}, {"REL", 0, 127, 84, GF_TIME},
     {"RATE", 0, 127, 40, GF_LFOHZ}, {"WAVE", 0, GL_NWAVE - 1, 0, GF_LWAVE}, {"DEPTH", 0, 127, 0, GF_PCT},
     {"DEST", 0, GD_N - 1, GD_MORPH, GF_LDEST},
-    {"MODE", 0, NARPMODE - 1, A_OFF, GF_ARP}, {"DIV", 0, NDIV - 1, D_16, GF_DIV}, {"OCTAVES", 1, 4, 1, GF_INT},
+    {"MODE", 0, NARPMODE - 1, A_OFF, GF_ARP}, {"DIV", 0, NDIV - 1, D_16, GF_DIV}, {"OCTAVE", 1, 4, 1, GF_INT},
     {"GATE", 0, 127, 64, GF_PCT},
     {"RATE", 0, 127, 30, GF_PCT}, {"DEPTH", 0, 127, 40, GF_PCT}, {"MIX", 0, 127, 0, GF_PCT}, {0, 0, 0, 0, GF_NONE},
     {"TIME", 0, 127, 80, GF_DLYMS}, {"FEEDBK", 0, 127, 50, GF_PCT}, {"TONE", 0, 127, 70, GF_PCT}, {"MIX", 0, 127, 0, GF_PCT},
