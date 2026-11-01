@@ -1,7 +1,7 @@
 # Kayak user guide
 
 <!-- Keep this line in step with the release: the guide describes this version. -->
-> **Applies to Kayak 0.9** (package identity `FM-1_987`) · [Releases](https://github.com/Tobe313/Kayak/releases) ·
+> **Applies to Kayak 1.0** (package identity `FM-1_987`) · [Releases](https://github.com/Tobe313/Kayak/releases) ·
 > [Version history](#10-version-history)
 
 ## Summary
@@ -17,7 +17,7 @@ Kayak is a custom firmware for the **M-VAVE FM-1** (and builds for the M-Vave SM
 - The **arpeggiator** (with HOLD, ratchet and chance), the **step sequencer** (64 steps, chords, ratchet, chance; it
   played through the arp when it is on), **chords on one key** and **live transposition** all come from or build on
   [OberVave](https://github.com/zvenson/obervave).
-- **HOME** shows both layers and the output, with four **performance knobs** you choose.
+- **HOME** shows both layers and the output, with four **performance knobs** you choose, or the waves alone.
 - There are 12 factory presets and 16 user slots. Kayak plays USB-MIDI and TRS MIDI in, follows MIDI clock, and
   sends notes out over USB-MIDI.
 
@@ -101,9 +101,9 @@ Installing firmware is at your own risk.
 | **ARP** | Short press: arpeggiator on or off. Long press: HOLD ([6.3](#63-arpeggiator-and-hold-arp)) |
 | **FX** | Short press: effect pages. Long press: FX MIX ([5](#5-effects-fx)) |
 | **SEQ** / **PLAY** / **REC** | Step sequencer; REC arms the keys to record ([7](#7-step-sequencer-seq)) |
-| **SELECT** | The pages of the current function, or the rows of the sequencer |
+| **SELECT** | The pages of the current function, the rows of the sequencer, or HOME's views |
 | **KNOB 1..4** | The four values on screen; on HOME, the performance knobs |
-| **HOME** | The HOME screen ([3.1](#31-home)); cancels a save |
+| **HOME** | The HOME screen; pressed again, its next view ([3.1](#31-home)); cancels a save |
 | **PRESETS** / **SAVE** | Choose a sound, save it ([8](#8-presets-and-memory)) |
 | **OCT- / OCT+** | Octave, ±2 |
 | **MASTER** | Output volume |
@@ -112,7 +112,16 @@ Installing firmware is at your own risk.
 
 ### 3.1 HOME
 
-After the 1.5-second splash, Kayak starts on HOME. A short press on **HOME** also brings you here. The screen shows:
+After the 1.5-second splash, Kayak starts on HOME. A short press on **HOME** also brings you here.
+
+HOME has two views. **Press HOME again**, or **turn SELECT**, to go from one to the other:
+
+| View | What it shows |
+| --- | --- |
+| **MAIN** | The sound's name, the layer, both layers' waves, the oscilloscope with the performance knobs over it, the status line (below) |
+| **WAVES** | The waves alone, on the whole screen, no text: the grains' material with POS, SPRD and every grain sounding (top), the analog layer's output over the last half second (middle), the oscilloscope of the output (bottom) |
+
+Kayak starts on MAIN. The MAIN view shows:
 
 - the preset name, with `*` once you have changed it;
 - the current layer (GRAIN or ANALOG);
@@ -120,8 +129,9 @@ After the 1.5-second splash, Kayak starts on HOME. A short press on **HOME** als
 - an oscilloscope of the output, with the four **performance knobs** over it: their names above, their values below;
 - a status line with the arp mode, HOLD, the sequencer (PLAY or STOP), the transposition (`T+5`) and the tempo.
 
-On HOME the four knobs turn the values chosen on [PERFORM](#48-performance-knobs-perform) and stay on HOME. SELECT
-takes you back to the pages.
+In both views the four knobs turn the values chosen on [PERFORM](#48-performance-knobs-perform) and stay on HOME
+(WAVES does not show their values). A function button (EDIT, SEL, ENV, LFO, GLO, ARP, FX) takes you back to the
+pages.
 
 ### 3.2 Pages, functions and layers
 
@@ -511,6 +521,7 @@ Presets 1–8 are ChoralRoot's GRAIN sounds, with Kayak's filter, envelope, LFO 
 
 | Version | Changes |
 | --- | --- |
+| **1.0** | HOME's two views, MAIN and WAVES (the waves alone on the whole screen), turned by HOME again or SELECT. SELECT no longer leaves HOME. |
 | **0.9** | REC arms the sequencer's recording; the highest F# writes a rest. Ratchet and chance for the arp (ARP+) and the steps (SEQ+). With the arp on, the sequencer's steps play through it. GRAIN pages named GRN. Both layers drawn, the current one in front. HOME: four performance knobs chosen on GLO › PERFORM (by default the layers' balance, both cutoffs, the delay's feedback and mix), shown over the scope. ANA pages: the analog output over half a second. User presets, settings and the sequence of 0.8 are kept. |
 | **0.8** | Chords on one key (GLO › CHORD). Keys transpose the running sequence and the held arp. Sequencer redesigned as rows (PATTERN; per step NOTE, CHORD, VEL, GATE). Soft limiter on the output. |
 | **0.7** | Two layers per voice (GRAIN and ANALOG) chosen with ALGORITHM, each with its own filter, ADSR and LFO. Effects on the whole sound. HOLD (long press ARP). FX MIX (long press FX). SELECT moves through the pages of the current function. 4 new presets (SUB PAD, ANA BASS, POLY SAW, PLUCK ARP). |
