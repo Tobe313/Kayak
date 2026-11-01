@@ -5,7 +5,8 @@
 # FX BASS; EDIT and SEL.) 0.7: ANA BASS, ALGORITHM to ANALOG, EDIT (ANA OSC), GLO (GLOBAL), FX held (FX MIX),
 # ARP held (HOLD), a note let go and still held, HOME. 0.8: ARP on, GLO's CHORD (MAJ), a key while HOLD holds: the arp
 # transposed (HOME shows it), HOLD off, a chord on one key; SEQ's rows: PATTERN, step 1's CHORD and GATE, a key writing
-# a chord into it, PLAY, a key on the pages transposing the sequence, STOP.
+# a chord into it, PLAY, a key on the pages transposing the sequence, STOP. 0.9: REC arms the keys, the top C# a
+# rest; GLO's PERFORM, a knob on HOME; SEQ+ (RATCH CHANCE), PATTERN's ARP on, PLAY with the arp.
 # tests/run_host.sh tests/scripts/grain.txt
 700 shot
 1800 keys 0x4880
@@ -43,11 +44,13 @@
 6000 btn 8
 6300 shot
 6400 btn 11
+6450 btn 13
 6500 keys 0x80
 6600 keys 0
 6700 keys 0x880
 6800 keys 0
-6900 btn 13
+6900 keys 0x100000
+6950 keys 0
 7000 keys 0x4000
 7100 keys 0
 7150 shot
@@ -77,9 +80,12 @@
 11600 btn 7
 11700 enc 5 1
 11800 shot
+11850 btn 7
+11890 shot
 11900 keys 0x2000
 12000 keys 0
 12100 btn 8
+12200 enc 2 6
 12300 shot
 12400 btndown 10
 13000 btnup 10
@@ -93,9 +99,14 @@
 14200 enc 3 2
 14300 enc 5 30
 14400 shot
+14450 btn 13
 14500 keys 0x10
 14600 keys 0
 14700 shot
+14720 btn 11
+14740 enc 2 1
+14760 enc 3 -50
+14780 shot
 14800 btn 12
 15500 shot
 15600 btn 7
@@ -104,4 +115,11 @@
 15900 shot
 16000 btn 12
 16200 shot
-16500 end
+16300 btn 11
+16350 enc 0 -2
+16400 enc 2 1
+16500 shot
+16600 btn 12
+17200 shot
+17500 btn 12
+17800 end

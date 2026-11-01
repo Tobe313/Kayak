@@ -12,8 +12,9 @@
 #define SEQ_MAX 64u
 #define SEQ_CHORD 4u
 #define GATE_TIE 127u                           /* a gate of 127: the notes hold into the next step */
-typedef struct { uint8_t note[SEQ_CHORD], vel, gate, chord; } step_t;   /* note 0 = none; chord: CHORDS' (0: the
-                                                 * notes as written) */
+typedef struct { uint8_t note[SEQ_CHORD], vel, gate, chord, ratch, chance; } step_t;   /* note 0 = none; chord: CHORDS' (0: the
+                                                 * notes as written); ratch: hits in the step (1..4), chance: %
+                                                 * it plays */
 
 /* ---- the chords (Kayak): the notes a key plays (GLO's CHORD), a step's (the sequencer's CHORD), as semitones over
  * the root. 0 (-): the one note */
@@ -31,7 +32,9 @@ static uint32_t chord_notes(uint32_t root, uint32_t chord, uint8_t *out)   /* ro
         if (root + (uint32_t)CHORDS[chord % NCHORD][i] <= 127u) out[n++] = (uint8_t)(root + (uint32_t)CHORDS[chord % NCHORD][i]);
     return n;
 }
-typedef struct { uint8_t len, div, swing, tempo; step_t st[SEQ_MAX]; } pattern_t;   /* swing 50..75 %, tempo BPM */
+typedef struct { uint8_t len, div, swing, tempo; step_t st[SEQ_MAX]; uint8_t arp; } pattern_t;   /* swing
+                                                 * 50..75 %, tempo BPM; arp: the steps' notes go to the arpeggiator
+                                                 * (while it is on) */
 static pattern_t pat;                           /* the main loop edits, the audio side plays */
 
 static void step_clear(step_t *s)
@@ -41,6 +44,8 @@ static void step_clear(step_t *s)
     s->vel = 100;
     s->gate = 96;                               /* 76 % */
     s->chord = 0;
+    s->ratch = 1;
+    s->chance = 100;
 }
 static void pat_init(pattern_t *p)              /* a bar of sixteenths, empty, 120 BPM */
 {
@@ -49,6 +54,7 @@ static void pat_init(pattern_t *p)              /* a bar of sixteenths, empty, 1
     p->div = D_16;
     p->swing = 50;
     p->tempo = 120;
+    p->arp = 0;
     for (i = 0; i < SEQ_MAX; i++) step_clear(&p->st[i]);
 }
 
@@ -82,7 +88,9 @@ static void held_remove(uint32_t note)
 }
 
 /* ---- the arpeggiator (OberVave's arp_step / arp_tick) */
-static struct { uint32_t cnt, period, gate_at, pos, sounding, note, was_on; } arp;
+static struct { uint32_t cnt, period, pos, sounding, note, was_on, vel, play, rat, rk; } arp;   /* rat: the ratchet's
+                                                 * hits in the step, rk: the last one played; play: CHANCE let it */
+static struct { uint8_t note[SEQ_CHORD], vel, n; } sa;   /* the sequencer's step, when it plays the arp (pat.arp) */
 static int32_t arp_rng = 0x6C8E9CF5;
 static int seq_phase(uint32_t *ph);
 static int seq_starting(void);
@@ -93,8 +101,9 @@ static void arp_stop_note(void)
 static void arp_step(void)
 {
     uint8_t sorted[NHELD];
-    uint32_t i, j, n = nheld, oct = (uint32_t)clamp(gp_p[GQ_AOCT], 1, 4), len, k, mode = (uint32_t)gp_p[GQ_AMODE], idx;
-    for (i = 0; i < n; i++) sorted[i] = held[i].note;
+    uint32_t i, j, n = sa.n ? sa.n : nheld, oct = (uint32_t)clamp(gp_p[GQ_AOCT], 1, 4), len, k, mode = (uint32_t)gp_p[GQ_AMODE], idx;
+    uint32_t chance = (uint32_t)clamp(gp_p[GQ_ACHANCE], 0, 127);
+    for (i = 0; i < n; i++) sorted[i] = sa.n ? sa.note[i] : held[i].note;
     if (mode != A_PLAY)
         for (i = 1; i < n; i++) {               /* insertion sort: 16 at most */
             uint8_t t = sorted[i];
@@ -115,10 +124,27 @@ static void arp_step(void)
     }
     idx = k % n;
     arp.note = (uint32_t)clamp((int32_t)sorted[idx] + 12 * (int32_t)(k / n) + ctl_transp, 0, 127);
-    for (i = 0; i < n; i++)                     /* the velocity of that key */
+    for (i = 0; i < n && !sa.n; i++)            /* the velocity of that key (the step's: its own) */
         if (held[i].note == sorted[idx]) break;
-    gp_voice_on(arp.note, i < n ? held[i].vel : 100u);
-    arp.sounding = 1;
+    arp.vel = sa.n ? sa.vel : i < n ? held[i].vel : 100u;
+    arp.play = chance >= 127u || noise32(&arp_rng) % 127u < chance;   /* CHANCE: the step may stay silent */
+    arp.rat = (uint32_t)clamp(gp_p[GQ_ARATCH], 1, 4);
+    arp.rk = 0;
+    if (arp.play) { gp_voice_on(arp.note, arp.vel); arp.sounding = 1; }
+}
+/* within the step: the ratchet's hits (RATCH: the step cut in 1..4), each held for GATE of its part */
+static void arp_gate(uint32_t gate)
+{
+    uint32_t L = arp.period / (arp.rat ? arp.rat : 1u), k;
+    if (L < CTL) L = CTL;
+    k = arp.cnt / L;
+    if (k >= arp.rat) k = arp.rat ? arp.rat - 1u : 0u;
+    if (k > arp.rk) {                           /* the next hit: the same note again */
+        arp.rk = k;
+        arp_stop_note();
+        if (arp.play) { gp_voice_on(arp.note, arp.vel); arp.sounding = 1; }
+    }
+    if (arp.sounding && gate < 127u && arp.cnt - k * L >= (L * (gate + 1u)) >> 7) arp_stop_note();
 }
 static void arp_tick(void)
 {
@@ -132,11 +158,10 @@ static void arp_tick(void)
         for (i = 0; i < nheld; i++) gp_voice_off(held[i].note);
         arp.was_on = 1; arp.pos = 0; arp.cnt = 0xFFFFFFFFu;
     }
-    if (!nheld) { arp_stop_note(); arp.pos = 0; arp.cnt = 0xFFFFFFFFu; return; }
+    if (!nheld && !sa.n) { arp_stop_note(); arp.pos = 0; arp.cnt = 0xFFFFFFFFu; return; }
     q = quarter_len();
     arp.period = q / div;
     if (arp.period < CTL) arp.period = CTL;
-    arp.gate_at = (arp.period * (gate + 1u)) >> 7;
     {                                           /* the sequencer running: on its grid (the first key: at once if just
                                                  * after a line, else on the next one), as a DAW's arp */
         uint32_t ph;
@@ -149,7 +174,7 @@ static void arp_tick(void)
             if (ph < CTL || (arp.cnt == 0xFFFFFFFFu && ph < arp.period / 4u)) { arp.cnt = ph; arp_stop_note(); arp_step(); return; }
             if (arp.cnt == 0xFFFFFFFFu) return; /* (waiting for the line) */
             arp.cnt = ph;
-            if (arp.sounding && arp.cnt >= arp.gate_at && gate < 127u) arp_stop_note();
+            arp_gate(gate);
             return;
         }
     }
@@ -159,7 +184,7 @@ static void arp_tick(void)
         arp_step();
     } else {
         arp.cnt += CTL;
-        if (arp.sounding && arp.cnt >= arp.gate_at && gate < 127u) arp_stop_note();
+        arp_gate(gate);
     }
 }
 
@@ -210,7 +235,10 @@ static void kayak_events(void)
 }
 
 /* ---- the sequencer (OberVave's seq_tick, one track) */
-static struct { uint32_t cnt, dur, step, frac, gate_at, nsnd, play, tie; uint8_t snd[SEQ_CHORD]; } sr;
+static struct { uint32_t cnt, dur, step, frac, gate_at, nsnd, play, tie, rat, rk, rlen, rgate; uint8_t snd[SEQ_CHORD]; } sr;
+/* rat: the ratchet's hits in the step, rk: the next one, rlen: a hit's length, rgate: its gate */
+static int32_t seq_rng = 0x2545F491;
+static uint32_t seq_arp(void) { return pat.arp && gp_p[GQ_AMODE] != A_OFF; }   /* the steps play the arp */
 static uint32_t seq_was, seq_beat_cnt;
 
 static void seq_release(void)
@@ -218,10 +246,19 @@ static void seq_release(void)
     uint32_t i;
     for (i = 0; i < sr.nsnd; i++) gp_voice_off(sr.snd[i]);
     sr.nsnd = 0;
+    sa.n = 0;
 }
 static void seq_sound(const step_t *s)
 {
     uint32_t i;
+    if (seq_arp()) {                            /* the step's notes, as keys held, to the arp */
+        uint32_t was = sa.n;
+        for (i = 0; i < SEQ_CHORD && s->note[i]; i++) sa.note[i] = s->note[i];
+        sa.n = (uint8_t)i;
+        sa.vel = s->vel ? s->vel : 100u;
+        if (!was && !nheld) { arp.pos = 0; arp.cnt = 0xFFFFFFFFu; }
+        return;
+    }
     for (i = 0; i < SEQ_CHORD && s->note[i] && sr.nsnd < SEQ_CHORD; i++) {
         uint32_t m = (uint32_t)tr_note(s->note[i]);
         gp_voice_on(m, s->vel ? s->vel : 100u);
@@ -239,6 +276,10 @@ static uint32_t seq_has(const step_t *s, uint32_t m)   /* the step plays note m 
 static void seq_tie_into(const step_t *s, uint32_t play)
 {
     uint32_t i, j, keep = 0;
+    if (seq_arp()) {                            /* (the arp: the step's notes in place of the last) */
+        if (play) seq_sound(s); else seq_release();
+        return;
+    }
     for (i = j = 0; i < sr.nsnd; i++) {
         if (play && seq_has(s, sr.snd[i])) { sr.snd[j++] = sr.snd[i]; keep++; }
         else gp_voice_off(sr.snd[i]);
@@ -294,18 +335,32 @@ static void seq_tick(void)
         if (sr.dur < CTL) sr.dur = CTL;
         s = &pat.st[sr.step];
         sr.play = s->note[0] != 0;
+        if (sr.play && s->chance < 100u && noise32(&seq_rng) % 100u >= s->chance)
+            sr.play = 0;                        /* CHANCE: this time a rest */
+        sr.rat = sr.play ? (uint32_t)clamp(s->ratch, 1, 4) : 1u;
+        sr.rlen = sr.dur / sr.rat;
+        sr.rk = 1;
         if (sr.tie)                             /* a tie: the notes the step plays again hold */
             seq_tie_into(s, sr.play);
         else {
             seq_release();
             if (sr.play) seq_sound(s);
         }
-        sr.tie = sr.play && s->gate >= GATE_TIE;
-        sr.gate_at = s->gate >= GATE_TIE ? 0xFFFFFFFFu
+        sr.tie = sr.play && s->gate >= GATE_TIE && sr.rat == 1u;   /* (a ratchet: no tie) */
+        sr.rgate = (uint32_t)clamp((int32_t)((sr.rlen * ((s->gate >= GATE_TIE ? 127u : s->gate) + 1u)) >> 7), CTL,
+                                   (int32_t)sr.rlen);
+        sr.gate_at = sr.tie ? 0xFFFFFFFFu
+                   : sr.rat > 1u ? sr.rgate
                    : (uint32_t)clamp((int32_t)((sr.dur * (s->gate + 1u)) >> 7), CTL, (int32_t)sr.dur);
         ui_seq_step = sr.step;
     }
-    if (sr.nsnd && sr.gate_at != 0xFFFFFFFFu && sr.cnt >= sr.gate_at)
+    if (sr.rk < sr.rat && sr.cnt >= sr.rk * sr.rlen) {   /* the ratchet's next hit: the step again */
+        seq_release();
+        seq_sound(&pat.st[sr.step % SEQ_MAX]);
+        sr.gate_at = sr.rk * sr.rlen + sr.rgate;
+        sr.rk++;
+    }
+    if ((sr.nsnd || sa.n) && sr.gate_at != 0xFFFFFFFFu && sr.cnt >= sr.gate_at)
         seq_release();
     sr.cnt += CTL;
 }

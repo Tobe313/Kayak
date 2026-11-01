@@ -54,8 +54,11 @@ enum {
     GQ_DTIME, GQ_DFB, GQ_DTONE, GQ_DMIX,
     GQ_RSIZE, GQ_RDAMP, GQ_RPRE, GQ_RMIX,
     GQ_VTYPE, GQ_VAMT, GQ_VTONE, GQ_VMIX,
+    GQ_ARATCH, GQ_ACHANCE,                       /* (0.9) the arp's ratchet and chance: last, so a 0.8 sound keeps its
+                                                 * order */
     GQ_N
 };
+#define GQ_N_V08 71u                            /* the knobs of a 0.8 sound (its user presets, its settings) */
 /* how a value reads on the screen (gq_text) */
 /* (labels and values of five characters at most: six of FONT_S fill a 60 px cell, they would touch the next) */
 enum { GF_INT, GF_TYPE, GF_PCT, GF_SIGNED, GF_SEMI, GF_SIZE, GF_DENS, GF_CUT, GF_TIME, GF_LFOHZ, GF_LWAVE, GF_LDEST,
@@ -99,6 +102,7 @@ static const gq_desc_t GQ[GQ_N] = {
     {"SIZE", 0, 127, 100, GF_PCT}, {"DAMP", 0, 127, 75, GF_PCT}, {"PRE", 0, 127, 30, GF_PCT}, {"MIX", 0, 127, 0, GF_PCT},
     {"TYPE", 0, NDV - 1, DV_OVERDRIVE, GF_VTYPE}, {"AMNT", 0, 127, 60, GF_PCT}, {"TONE", 0, 127, 90, GF_PCT},
     {"MIX", 0, 127, 0, GF_PCT},
+    {"RATCH", 1, 4, 1, GF_INT}, {"CHNCE", 0, 127, 127, GF_PCT},
 };
 static volatile int8_t gp_p[GQ_N];
 static void gp_defaults(void)
