@@ -265,14 +265,23 @@ static void draw_save(uint32_t to)              /* the save screen: the slot, wh
     draw_text_box(0, 222, 240, &FONT_S, "HOME: CANCEL", C_OFF, 1);
 }
 
-static void draw_status(int32_t oct, uint32_t ch)
+static void put_transp(char **p, int32_t tr)    /* " T+5", none at 0 */
 {
-    char s[24] = "OCT +0  MIDI OMNI";
+    if (!tr) return;
+    gq_put_str(p, " T");
+    *(*p)++ = tr < 0 ? '-' : '+';
+    gq_put_dec(p, (uint32_t)(tr < 0 ? -tr : tr));
+}
+static void draw_status(int32_t oct, uint32_t ch, int32_t tr)   /* tr: the transposition */
+{
+    char s[32] = "OCT +0  MIDI OMNI", *p = s + 17;
     s[4] = oct < 0 ? '-' : '+';
     s[5] = (char)('0' + (oct < 0 ? -oct : oct));
     if (ch) {
         s[13] = 'C'; s[14] = 'H'; s[15] = (char)(ch < 10u ? ' ' : '1'); s[16] = (char)('0' + ch % 10u);
     }
+    put_transp(&p, tr);
+    *p = 0;
     draw_text_box(0, 204, 240, &FONT_S, s, C_OFF, 1);
 }
 
@@ -304,13 +313,6 @@ static void note_name(uint32_t n, char **p)     /* "C4", "F#2" */
 }
 
 /* HOME's line: the arp (and HOLD), the sequencer, the tempo while it fits (24 characters: 240 px of FONT_S) */
-static void put_transp(char **p, int32_t tr)    /* " T+5", none at 0 */
-{
-    if (!tr) return;
-    gq_put_str(p, " T");
-    *(*p)++ = tr < 0 ? '-' : '+';
-    gq_put_dec(p, (uint32_t)(tr < 0 ? -tr : tr));
-}
 static void draw_home_line(uint32_t run, uint32_t bpm, uint32_t hold)
 {
     char s[40], *p = s;
@@ -415,11 +417,12 @@ static void draw_seq_cells(uint32_t row, uint32_t bpm)   /* PATTERN: TEMPO STEPS
     }
     cv_blit(0, CELL_Y);
 }
-static void draw_seq_lines(uint32_t row, uint32_t bpm, uint32_t run)   /* PLAY / STOP, the tempo, the transposition;
-                                                 * the row */
+static void draw_seq_lines(uint32_t row, uint32_t bpm, uint32_t play)   /* PLAY (the step) or STOP, the tempo, the
+                                                 * transposition; the row */
 {
     char s[40], *p = s;
-    gq_put_str(&p, run ? "PLAY  " : "STOP  ");
+    if (play < SEQ_MAX) { gq_put_str(&p, "PLAY "); gq_put_dec(&p, play + 1u); gq_put_str(&p, "  "); }
+    else gq_put_str(&p, "STOP  ");
     gq_put_dec(&p, bpm);
     gq_put_str(&p, " BPM ");
     put_transp(&p, ctl_transp);
@@ -953,9 +956,9 @@ static void app_main(void)
                 draw_seq_rows(row, play);
                 draw_seq_cells(row, bpm);
             }
-            if ((st = bpm | ctl_seq_run << 8 | (uint32_t)(ctl_transp + 32) << 9 | row << 16 | len << 24) != line_drawn) {
+            if ((st = (bpm | (uint32_t)(ctl_transp + 32) << 8 | row << 14 | len << 21) * 131u + play) != line_drawn) {
                 line_drawn = st;
-                draw_seq_lines(row, bpm, ctl_seq_run);
+                draw_seq_lines(row, bpm, play);
             }
         } else {
             uint32_t sum = pg, live = 0, wpg = view == V_HOME ? 2u : pg;
@@ -970,7 +973,7 @@ static void app_main(void)
                     sum = sum * 131u + (q == QX ? 0u : q == QCH ? set.ch : q == QCHORD ? set.chord : (uint8_t)gp_p[q]);
                 }
                 if (sum != cells_drawn) { cells_drawn = sum; draw_cells(pg, set.ch, set.chord); }
-                if ((st = (uint32_t)(oct + 2) | (uint32_t)set.ch << 4) != status_drawn) { status_drawn = st; draw_status(oct, set.ch); }
+                if ((st = (uint32_t)(oct + 2) | (uint32_t)set.ch << 4 | (uint32_t)(ctl_transp + 32) << 9) != status_drawn) { status_drawn = st; draw_status(oct, set.ch, ctl_transp); }
             }
             if ((st = midi_src | clk_bpm << 2 | clk_run << 12) != midi_drawn) { midi_drawn = st; draw_midi(midi_src, clk_bpm, clk_run); }
             for (k = 0; k < GP_NG; k++) live |= gpg[k].owner;

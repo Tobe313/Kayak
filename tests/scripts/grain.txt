@@ -3,7 +3,7 @@
 # into a user slot; then HOME (the wave and the scope), SEQ (three steps written: a note, a chord, a rest, a note),
 # PLAY, HOME while it plays, ARP on, PLAY again to stop. (0.5: it starts on HOME; the bass's VOLUME up a little on
 # FX BASS; EDIT and SEL.) 0.7: ANA BASS, ALGORITHM to ANALOG, EDIT (ANA OSC), GLO (GLOBAL), FX held (FX MIX),
-# ARP held (HOLD), a note let go and still held, HOME. 0.8: GLO's CHORD (MAJ), a key while HOLD holds: the arp
+# ARP held (HOLD), a note let go and still held, HOME. 0.8: ARP on, GLO's CHORD (MAJ), a key while HOLD holds: the arp
 # transposed (HOME shows it), HOLD off, a chord on one key; SEQ's rows: PATTERN, step 1's CHORD and GATE, a key writing
 # a chord into it, PLAY, a key on the pages transposing the sequence, STOP.
 # tests/run_host.sh tests/scripts/grain.txt
@@ -73,6 +73,7 @@
 10900 keys 0
 11200 btn 8
 11500 shot
+11550 btn 10
 11600 btn 7
 11700 enc 5 1
 11800 shot
