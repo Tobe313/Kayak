@@ -1,0 +1,395 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-3.0-only -->
+<!-- Kayak samples: sends audio files from this computer or phone into the FM-1's sample slots over USB-MIDI SysEx
+     (Web MIDI); the protocol is firmware/src/kayak_smp.h's. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Kayak samples</title>
+<meta name="description" content="Load your own samples into Kayak's granular engine on the M-VAVE FM-1, over USB.">
+<style>
+:root {
+  --bg: #111214; --panel: #1b1d21; --line: #2c2f35; --text: #e8e6e3; --dim: #9a9790; --acc: #ff8c1a; --acc2: #4696ff;
+  --ok: #4cc38a; --bad: #ef5b5b;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+main { max-width: 860px; margin: 0 auto; padding: 20px 16px 60px; }
+h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: .02em; }
+h1 span { color: var(--acc); }
+h2 { font-size: 17px; margin: 28px 0 10px; }
+p.lead { color: var(--dim); margin: 0 0 18px; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+button, select, input[type=text] {
+  font: inherit; color: var(--text); background: #25282e; border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px;
+}
+button { cursor: pointer; }
+button.primary { background: var(--acc); border-color: var(--acc); color: #1a1205; font-weight: 600; }
+button:disabled { opacity: .45; cursor: default; }
+button.small { padding: 4px 10px; font-size: 13px; }
+.status { color: var(--dim); font-size: 14px; }
+.status.ok { color: var(--ok); } .status.bad { color: var(--bad); }
+.slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 8px; }
+.slot { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+.slot b { color: var(--acc); font-weight: 600; }
+.slot .meta { font-size: 13px; color: var(--dim); }
+.empty { color: var(--dim); }
+.card { margin-top: 12px; }
+.card .head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; margin-bottom: 8px; }
+.card .file { font-weight: 600; overflow-wrap: anywhere; }
+canvas { width: 100%; height: 110px; display: block; background: #0c0d0f; border-radius: 6px; touch-action: none; cursor: ew-resize; }
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; margin-top: 10px; }
+.fields label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--dim); }
+.bar { height: 6px; background: #25282e; border-radius: 3px; overflow: hidden; margin-top: 10px; }
+.bar i { display: block; height: 100%; width: 0; background: var(--acc); transition: width .1s; }
+.drop { display: block; cursor: pointer; border: 2px dashed var(--line); border-radius: 10px; padding: 18px; text-align: center; color: var(--dim); }
+.drop.on { border-color: var(--acc); color: var(--text); }
+.help { color: var(--dim); font-size: 14px; }
+.help li { margin: 4px 0; }
+a { color: var(--acc2); }
+.warn { border-color: var(--bad); color: #f4c7c7; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Kayak <span>samples</span></h1>
+  <p class="lead" data-t="lead">Load your own sounds into Kayak's granular engine, on an M-VAVE FM-1 connected over USB.</p>
+
+  <div id="nomidi" class="panel warn" hidden data-t="nomidi">This browser cannot talk to MIDI devices. Use Chrome or Edge on a computer, or Chrome on Android (with a USB OTG cable).</div>
+
+  <section class="panel">
+    <div class="row">
+      <button id="connect" class="primary" data-t="connect">Connect the FM-1</button>
+      <select id="port" hidden></select>
+      <button id="refresh" disabled data-t="refresh">Read the slots</button>
+      <span id="status" class="status" data-t="status0">Not connected.</span>
+    </div>
+  </section>
+
+  <h2 data-t="slotsT">Slots on the FM-1</h2>
+  <div id="slots" class="slots"><div class="empty" data-t="noslots">Connect to see them.</div></div>
+
+  <h2 data-t="addT">Add sounds</h2>
+  <label id="drop" class="drop">
+    <input id="files" type="file" accept="audio/*,.wav,.mp3,.ogg,.flac,.m4a,.aif,.aiff" multiple hidden>
+    <span data-t="drop">Tap to choose audio files, or drop them here (WAV, MP3, OGG, FLAC…)</span>
+  </label>
+  <div id="cards"></div>
+
+  <h2 data-t="howT">How it works</h2>
+  <ul class="help">
+    <li data-t="h1">Each slot holds up to 0.74 s, mono, at 22 050 Hz: drag on the wave to choose which part is kept.</li>
+    <li data-t="h2">On the FM-1: EDIT, GRN SRC A (or B), turn TYPE past METAL to SMP1, SMP2… TONE under 64 darkens it, MOVE moves its start, SEED 64 and up plays it backwards.</li>
+    <li data-t="h3">ROOT is the note the sound has: played on that key, it keeps its pitch.</li>
+    <li data-t="h4">While a slot is written the sound stops for about half a second.</li>
+    <li data-t="h5">Needs Kayak 1.2 or later. Chrome asks once to allow MIDI with “system exclusive messages”.</li>
+  </ul>
+  <p class="help"><a href="https://github.com/Tobe313/Kayak">Kayak on GitHub</a> · <a href="https://github.com/Tobe313/Kayak/blob/main/docs/GUIDE.md">User guide</a></p>
+</main>
+
+<script>
+"use strict";
+const RATE = 22050, NMAX = 16384;                      // Kayak's GS_RATE, GS_N (the INFO answer confirms them)
+const HDR = [0x7D, 0x4B, 0x59];
+const NOTES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const T = {
+  fr: {
+    lead: "Chargez vos propres sons dans le moteur granulaire de Kayak, sur un M-VAVE FM-1 branché en USB.",
+    nomidi: "Ce navigateur ne peut pas parler aux appareils MIDI. Utilisez Chrome ou Edge sur ordinateur, ou Chrome sur Android (avec un câble USB OTG).",
+    connect: "Connecter le FM-1", refresh: "Lire les emplacements", status0: "Non connecté.",
+    slotsT: "Emplacements du FM-1", noslots: "Connectez-vous pour les voir.", addT: "Ajouter des sons",
+    drop: "Touchez pour choisir des fichiers audio, ou déposez-les ici (WAV, MP3, OGG, FLAC…)",
+    howT: "Mode d'emploi",
+    h1: "Chaque emplacement contient jusqu'à 0,74 s, mono, à 22 050 Hz : faites glisser sur la forme d'onde pour choisir la partie gardée.",
+    h2: "Sur le FM-1 : EDIT, GRN SRC A (ou B), tournez TYPE après METAL jusqu'à SMP1, SMP2… TONE sous 64 l'assombrit, MOVE déplace son début, SEED à partir de 64 le joue à l'envers.",
+    h3: "ROOT est la note du son : joué sur cette touche, il garde sa hauteur.",
+    h4: "Pendant l'écriture d'un emplacement, le son s'arrête environ une demi-seconde.",
+    h5: "Nécessite Kayak 1.2 ou plus. Chrome demande une fois d'autoriser le MIDI avec les « messages exclusifs système ».",
+    slot: "Emplacement", empty: "vide", erase: "Effacer", send: "Envoyer", remove: "Retirer", play: "Écouter",
+    name: "Nom (8 lettres)", root: "Note (ROOT)", to: "Vers l'emplacement", start: "Début",
+    connected: "Connecté", noport: "Aucun FM-1 trouvé : branchez-le, puis réessayez.", denied: "Accès MIDI refusé.",
+    noanswer: "Le FM-1 ne répond pas : est-ce bien Kayak 1.2 ou plus ?", sending: "Envoi…", sent: "Envoyé dans l'emplacement",
+    failed: "Échec", erased: "Effacé", decodeFail: "Fichier illisible", busy: "Un envoi est en cours.", eraseQ: "Effacer l'emplacement"
+  },
+  en: {
+    slot: "Slot", empty: "empty", erase: "Erase", send: "Send", remove: "Remove", play: "Play",
+    name: "Name (8 letters)", root: "Note (ROOT)", to: "To slot", start: "Start",
+    connected: "Connected", noport: "No FM-1 found: plug it in, then try again.", denied: "MIDI access refused.",
+    noanswer: "The FM-1 does not answer: is it Kayak 1.2 or later?", sending: "Sending…", sent: "Sent into slot",
+    failed: "Failed", erased: "Erased", decodeFail: "Cannot read this file", busy: "A transfer is under way.", eraseQ: "Erase slot"
+  }
+};
+const LANG = (navigator.language || "en").toLowerCase().startsWith("fr") ? "fr" : "en";
+const tr = k => (T[LANG] && T[LANG][k]) || T.en[k] || k;
+if (LANG === "fr") {
+  document.documentElement.lang = "fr";
+  document.querySelectorAll("[data-t]").forEach(e => { if (T.fr[e.dataset.t]) e.textContent = T.fr[e.dataset.t]; });
+}
+
+const $ = id => document.getElementById(id);
+let midi = null, out = null, inp = null, nslot = 8, slots = [], busy = false, waiters = [];
+const items = [];                                       // the files added: {name, pcm Float32Array, start, card…}
+
+function setStatus(text, cls) { const s = $("status"); s.textContent = text; s.className = "status" + (cls ? " " + cls : ""); }
+if (!navigator.requestMIDIAccess) { $("nomidi").hidden = false; $("connect").disabled = true; }
+
+// ---- MIDI: the FM-1's ports, the SysEx frames, their answers
+$("connect").onclick = async () => {
+  try { midi = await navigator.requestMIDIAccess({ sysex: true }); }
+  catch (e) { setStatus(tr("denied"), "bad"); return; }
+  midi.onstatechange = listPorts;
+  listPorts();
+};
+function listPorts() {
+  const outs = [...midi.outputs.values()], sel = $("port");
+  const pick = outs.find(o => /fm-?1|felucca|kayak|m-?vave|smk/i.test(o.name)) || outs[0];
+  sel.innerHTML = "";
+  outs.forEach(o => { const op = document.createElement("option"); op.value = o.id; op.textContent = o.name; sel.appendChild(op); });
+  sel.hidden = outs.length < 2;
+  if (!pick) { setStatus(tr("noport"), "bad"); return; }
+  sel.value = pick.id;
+  usePort(pick.id);
+}
+$("port").onchange = e => usePort(e.target.value);
+function usePort(id) {
+  out = midi.outputs.get(id);
+  const ins = [...midi.inputs.values()];
+  if (inp) inp.onmidimessage = null;
+  inp = ins.find(i => i.name === out.name) || ins.find(i => /fm-?1|felucca|kayak|m-?vave|smk/i.test(i.name)) || ins[0];
+  if (inp) inp.onmidimessage = onMidi;
+  $("refresh").disabled = false;
+  setStatus(tr("connected") + ": " + out.name, "ok");
+  readSlots();
+}
+function onMidi(ev) {
+  const d = ev.data;
+  if (d[0] !== 0xF0 || d[1] !== 0x7D || d[2] !== 0x4B || d[3] !== 0x59) return;
+  const body = [...d.slice(4, d.length - 1)];
+  waiters = waiters.filter(w => !w(body));               // a waiter returns true once it has what it waited for
+}
+function ask(frame, match, ms) {                         // send a frame, wait for the answer match() takes
+  return new Promise((res, rej) => {
+    const timer = setTimeout(() => { waiters = waiters.filter(w => w !== fn); rej(new Error("timeout")); }, ms);
+    const fn = body => { const r = match(body); if (r === undefined) return false; clearTimeout(timer); res(r); return true; };
+    waiters.push(fn);
+    out.send([0xF0, ...HDR, ...frame, 0xF7]);
+  });
+}
+const ack = (cmd, q) => body => body[0] === 0x7E && body[1] === cmd && (q === undefined || (body[2] | body[3] << 7) === q)
+  ? body[4] : undefined;
+async function askRetry(frame, match, ms, tries = 3) {
+  for (let i = 0; ; i++) {
+    try { return await ask(frame, match, ms); } catch (e) { if (i + 1 >= tries) throw e; }
+  }
+}
+
+// ---- the slots
+$("refresh").onclick = readSlots;
+async function readSlots() {
+  if (busy || !out) return;
+  try {
+    const b = await askRetry([0x01], body => body[0] === 0x01 ? body : undefined, 3000);
+    nslot = b[1];
+    slots = [];
+    for (let i = 0, o = 8; i < nslot; i++, o += 13) {
+      const used = b[o], len = b[o + 1] | b[o + 2] << 7 | b[o + 3] << 14, root = b[o + 4];
+      const name = String.fromCharCode(...b.slice(o + 5, o + 13).filter(c => c > 0)).trim();
+      slots.push({ used, len, root, name });
+    }
+    drawSlots();
+  } catch (e) { setStatus(tr("noanswer"), "bad"); }
+}
+function noteName(n) { return NOTES[n % 12] + (Math.floor(n / 12) - 1); }
+function drawSlots() {
+  const box = $("slots");
+  box.innerHTML = "";
+  slots.forEach((s, i) => {
+    const d = document.createElement("div");
+    d.className = "slot";
+    d.innerHTML = `<div><b>SMP${i + 1}</b> ${s.used ? escapeHtml(s.name || "—") : `<span class="empty">${tr("empty")}</span>`}
+      <div class="meta">${s.used ? (s.len / RATE).toFixed(2) + " s · " + noteName(s.root) : "&nbsp;"}</div></div>`;
+    if (s.used) {
+      const b = document.createElement("button");
+      b.className = "small"; b.textContent = tr("erase");
+      b.onclick = () => eraseSlot(i);
+      d.appendChild(b);
+    }
+    box.appendChild(d);
+  });
+  items.forEach(it => fillSlotSelect(it));
+}
+async function eraseSlot(i) {
+  if (busy) { setStatus(tr("busy"), "bad"); return; }
+  if (!confirm(tr("eraseQ") + " SMP" + (i + 1) + " ?")) return;
+  busy = true;
+  try {
+    const st = await askRetry([0x05, i], ack(0x05, i), 8000, 1);
+    setStatus(st === 0 ? tr("erased") + ": SMP" + (i + 1) : tr("failed"), st === 0 ? "ok" : "bad");
+  } catch (e) { setStatus(tr("noanswer"), "bad"); }
+  busy = false;
+  readSlots();
+}
+function escapeHtml(s) { return s.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]); }
+
+// ---- the files: decoded, made mono at 22 050 Hz, a window of up to NMAX samples
+const drop = $("drop");
+$("files").onchange = e => { addFiles(e.target.files); e.target.value = ""; };
+["dragenter", "dragover"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("on"); }));
+["dragleave", "drop"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.remove("on"); }));
+drop.addEventListener("drop", e => addFiles(e.dataTransfer.files));
+let actx = null;
+async function addFiles(list) {
+  actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+  for (const f of list) {
+    try {
+      const buf = await actx.decodeAudioData(await f.arrayBuffer());
+      const n = Math.max(1, Math.ceil(buf.duration * RATE));
+      const oc = new OfflineAudioContext(1, n, RATE);   // (one channel: the mix of all)
+      const src = oc.createBufferSource();
+      src.buffer = buf; src.connect(oc.destination); src.start();
+      const pcm = (await oc.startRendering()).getChannelData(0);
+      const base = f.name.replace(/\.[^.]*$/, "").toUpperCase().replace(/[^A-Z0-9 _-]/g, "").slice(0, 8) || "SAMPLE";
+      const it = { file: f.name, pcm, start: 0, name: base, root: 60, slot: -1 };
+      it.start = loudest(pcm);
+      items.push(it);
+      makeCard(it);
+    } catch (e) { setStatus(tr("decodeFail") + ": " + f.name, "bad"); }
+  }
+}
+function loudest(pcm) {                                 // start the window where the sound starts (first above -30 dB)
+  let pk = 0; for (const v of pcm) pk = Math.max(pk, Math.abs(v));
+  const th = pk * 0.03;
+  for (let i = 0; i < pcm.length; i++) if (Math.abs(pcm[i]) > th) return Math.max(0, Math.min(i, pcm.length - NMAX));
+  return 0;
+}
+function makeCard(it) {
+  const c = document.createElement("section");
+  c.className = "panel card";
+  c.innerHTML = `
+    <div class="head"><span class="file"></span><span class="status dur"></span></div>
+    <canvas width="800" height="110"></canvas>
+    <div class="fields">
+      <label>${tr("name")}<input type="text" maxlength="8" class="name"></label>
+      <label>${tr("root")}<select class="root"></select></label>
+      <label>${tr("to")}<select class="slot"></select></label>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <button class="play">${tr("play")}</button>
+      <button class="send primary">${tr("send")}</button>
+      <button class="remove">${tr("remove")}</button>
+      <span class="status msg"></span>
+    </div>
+    <div class="bar"><i></i></div>`;
+  c.querySelector(".file").textContent = it.file;
+  const nm = c.querySelector(".name");
+  nm.value = it.name;
+  nm.oninput = () => { nm.value = nm.value.toUpperCase().replace(/[^A-Z0-9 _-]/g, ""); it.name = nm.value; };
+  const rs = c.querySelector(".root");
+  for (let n = 24; n <= 96; n++) { const o = document.createElement("option"); o.value = n; o.textContent = noteName(n); rs.appendChild(o); }
+  rs.value = it.root;
+  rs.onchange = () => it.root = +rs.value;
+  it.card = c;
+  fillSlotSelect(it);
+  c.querySelector(".slot").onchange = e => it.slot = +e.target.value;
+  c.querySelector(".play").onclick = () => play(it);
+  c.querySelector(".send").onclick = () => send(it);
+  c.querySelector(".remove").onclick = () => { items.splice(items.indexOf(it), 1); c.remove(); items.forEach(fillSlotSelect); };
+  const cv = c.querySelector("canvas");
+  const move = e => {
+    const r = cv.getBoundingClientRect(), x = (e.clientX - r.left) / r.width;
+    const win = Math.min(NMAX, it.pcm.length);
+    it.start = Math.max(0, Math.min(it.pcm.length - win, Math.round(x * it.pcm.length - win / 2)));
+    drawWave(it);
+  };
+  cv.onpointerdown = e => { cv.setPointerCapture(e.pointerId); move(e); cv.onpointermove = move; };
+  cv.onpointerup = () => { cv.onpointermove = null; };
+  $("cards").appendChild(c);
+  drawWave(it);
+}
+function fillSlotSelect(it) {
+  if (!it.card) return;
+  const sel = it.card.querySelector(".slot"), taken = items.filter(o => o !== it).map(o => o.slot);
+  if (it.slot < 0) {                                    // the first slot empty and not asked for by another file
+    let i = slots.findIndex((s, k) => !s.used && !taken.includes(k));
+    if (i < 0) i = [...Array(nslot).keys()].find(k => !taken.includes(k)) ?? 0;
+    it.slot = i;
+  }
+  sel.innerHTML = "";
+  for (let i = 0; i < nslot; i++) {
+    const s = slots[i], o = document.createElement("option");
+    o.value = i; o.textContent = "SMP" + (i + 1) + (s && s.used ? " · " + s.name : s ? " · " + tr("empty") : "");
+    sel.appendChild(o);
+  }
+  sel.value = it.slot;
+}
+function drawWave(it) {
+  const cv = it.card.querySelector("canvas"), g = cv.getContext("2d"), W = cv.width, H = cv.height, p = it.pcm;
+  const win = Math.min(NMAX, p.length);
+  g.fillStyle = "#0c0d0f"; g.fillRect(0, 0, W, H);
+  g.fillStyle = "rgba(255,140,26,.16)";
+  g.fillRect(it.start / p.length * W, 0, win / p.length * W, H);
+  for (let x = 0; x < W; x++) {
+    const a = Math.floor(x * p.length / W), b = Math.max(a + 1, Math.floor((x + 1) * p.length / W));
+    let lo = 0, hi = 0;
+    for (let i = a; i < b; i++) { if (p[i] < lo) lo = p[i]; if (p[i] > hi) hi = p[i]; }
+    const inside = a >= it.start && a < it.start + win;
+    g.fillStyle = inside ? "#ff8c1a" : "#4a4d55";
+    g.fillRect(x, H / 2 - hi * H / 2, 1, Math.max(1, (hi - lo) * H / 2));
+  }
+  it.card.querySelector(".dur").textContent =
+    (win / RATE).toFixed(2) + " s / " + (p.length / RATE).toFixed(2) + " s · " + tr("start") + " " + (it.start / RATE).toFixed(2) + " s";
+}
+function windowPcm(it) {                                // the part kept, normalized to -1 dB
+  const win = Math.min(NMAX, it.pcm.length), w = it.pcm.slice(it.start, it.start + win);
+  let pk = 0; for (const v of w) pk = Math.max(pk, Math.abs(v));
+  const g = pk > 0 ? 0.89 / pk : 1;
+  return w.map(v => v * g);
+}
+function play(it) {
+  actx = actx || new (window.AudioContext || window.webkitAudioContext)();
+  const w = windowPcm(it), b = actx.createBuffer(1, w.length, RATE);
+  b.copyToChannel(w, 0);
+  const s = actx.createBufferSource(); s.buffer = b; s.connect(actx.destination); s.start();
+}
+
+// ---- the transfer: BEGIN, DATA (512 bytes a frame, packed 7 to 8), COMMIT; each frame answered before the next
+function pack7(bytes) {
+  const o = [];
+  for (let i = 0; i < bytes.length; i += 7) {
+    const g = bytes.slice(i, i + 7);
+    let top = 0; g.forEach((x, j) => { top |= (x >> 7 & 1) << j; });
+    o.push(top, ...[...g].map(x => x & 0x7F));
+  }
+  return o;
+}
+async function send(it) {
+  if (!out) { setStatus(tr("noport"), "bad"); return; }
+  if (busy) { setStatus(tr("busy"), "bad"); return; }
+  busy = true;
+  const c = it.card, msg = c.querySelector(".msg"), bar = c.querySelector(".bar i"), btn = c.querySelector(".send");
+  btn.disabled = true; msg.className = "status msg"; msg.textContent = tr("sending");
+  try {
+    const w = windowPcm(it), n = w.length, raw = new Uint8Array(n * 2), dv = new DataView(raw.buffer);
+    for (let i = 0; i < n; i++) dv.setInt16(i * 2, Math.max(-32767, Math.min(32767, Math.round(w[i] * 32767))), true);
+    const name = (it.name || "SAMPLE").padEnd(8, "\0").slice(0, 8).split("").map(ch => ch.charCodeAt(0) & 0x7F);
+    if (await askRetry([0x02, it.slot, n & 0x7F, n >> 7 & 0x7F, n >> 14 & 0x7F, it.root & 0x7F, ...name], ack(0x02), 2000)) throw 0;
+    const chunks = Math.ceil(raw.length / 512);
+    for (let q = 0; q < chunks; q++) {
+      if (await askRetry([0x03, q & 0x7F, q >> 7 & 0x7F, ...pack7(raw.subarray(q * 512, q * 512 + 512))], ack(0x03, q), 1500)) throw 0;
+      bar.style.width = (100 * (q + 1) / (chunks + 1)) + "%";
+    }
+    if (await askRetry([0x04], ack(0x04), 10000, 1)) throw 0;
+    bar.style.width = "100%";
+    msg.className = "status msg ok"; msg.textContent = tr("sent") + " SMP" + (it.slot + 1);
+  } catch (e) {
+    msg.className = "status msg bad"; msg.textContent = e instanceof Error ? tr("noanswer") : tr("failed");
+  }
+  btn.disabled = false;
+  busy = false;
+  readSlots();
+}
+</script>
+</body>
+</html>

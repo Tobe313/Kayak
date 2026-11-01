@@ -3,6 +3,7 @@
 **A firmware for the M-VAVE FM-1 (and the M-Vave SMK-37), forked from [Dinghy](https://github.com/zvenson/dinghy) by zvenson.**
 
 **[The user guide](docs/GUIDE.md)**: every control, page and value, with the sources.
+**[Kayak samples](https://tobe313.github.io/Kayak/samples/)**: send your own samples into the FM-1 over USB (Chrome / Edge, Chrome on Android).
 
 Package identity `FM-1_987` (SMK-37: `SMK-37 Pro_987`, `SMK-37 Elite_987`, `MKE-P37_987`; up to 0.41: `_946`), packages `kayak*.fwsc`.
 Kayak is a granular synth: the GRAIN engine of [ChoralRoot FM-1](https://github.com/Quixotic7/ChoralRootFM1)
@@ -16,7 +17,7 @@ a square an octave under, noise), each with its own filter, ADSR and LFO; the ef
 | control | |
 | --- | --- |
 | ALGORITHM | the layer the sound's functions show: **GRAIN** (turned left) or **ANALOG** (turned right) |
-| EDIT | GRAIN: **GRN SRC A**, **GRN SRC B** (TYPE TONE MOVE SEED), **GRN GRAIN** (SIZE DENS POS SPRD), **GRN GRAIN+** (MORPH RAND PITCH SCAN); ANALOG: **ANA OSC** (WAVE DETUN OCT PW), **ANA OSC+** (SUB NOISE). The band shows the layer in front (the grains' material, or the analog layer's output over the last half second, after its filter and envelope) and the other layer dim behind it |
+| EDIT | GRAIN: **GRN SRC A**, **GRN SRC B** (TYPE TONE MOVE SEED; TYPE past METAL: **SMP1 .. SMP8**, your own samples sent from the [web page](https://tobe313.github.io/Kayak/samples/)), **GRN GRAIN** (SIZE DENS POS SPRD), **GRN GRAIN+** (MORPH RAND PITCH SCAN); ANALOG: **ANA OSC** (WAVE DETUN OCT PW), **ANA OSC+** (SUB NOISE). The band shows the layer in front (the grains' material, or the analog layer's output over the last half second, after its filter and envelope) and the other layer dim behind it |
 | SEL | the layer's filter: **GRN FILT** / **ANA FILT** (TYPE CUT RES DRIVE), **+** (KTRK SEM) |
 | ENV, LFO | the layer's ADSR (ATK DEC SUS REL), its LFO (RATE WAVE DEPTH DEST) |
 | GLO | **GLOBAL**: the two layers' levels (GRAIN, ANLG), the MIDI channel (OMNI or 1..16) and **CHORD**: the chord a key plays (- the one note, MAJ MIN 7 MAJ7 MIN7 SUS2 SUS4 DIM AUG POWER ADD9), out over MIDI too; **PERFORM**: what HOME's four knobs turn (by default BAL: the grains against the analog layer, CUTS: both filters' cutoffs, D.FB and DELAY: the delay's feedback and mix; or MORPH, POS, a filter, a level, an effect's mix, the arp's GATE RATCH CHNCE...) |

@@ -1,7 +1,7 @@
 # Kayak user guide
 
 <!-- Keep this line in step with the release: the guide describes this version. -->
-> **Applies to Kayak 1.1** (package identity `FM-1_987`) · [Releases](https://github.com/Tobe313/Kayak/releases) ·
+> **Applies to Kayak 1.2** (package identity `FM-1_987`) · [Releases](https://github.com/Tobe313/Kayak/releases) ·
 > [Version history](#10-version-history)
 
 ## Summary
@@ -9,8 +9,8 @@
 Kayak is a custom firmware for the **M-VAVE FM-1** (and builds for the M-Vave SMK-37). It turns the FM-1 into an
 **8-voice granular synth** with a second, **analog-style layer** in every voice:
 
-- **GRAIN layer**: two sources, A and B, are synthesised on the device (no samples) and up to 16 grains read them,
-  mixed by MORPH. The engine comes from [ChoralRoot FM-1](https://github.com/Quixotic7/ChoralRootFM1).
+- **GRAIN layer**: two sources, A and B, are synthesised on the device, or are **your own samples** sent from a web
+  page, and up to 16 grains read them, mixed by MORPH. The engine comes from [ChoralRoot FM-1](https://github.com/Quixotic7/ChoralRootFM1).
 - **ANALOG layer**: two detuned oscillators (SAW, SQR, TRI), a sub-oscillator and noise.
 - Each layer has its own **filter**, **ADSR envelope** and **LFO**.
 - The **effects** (stereo phaser, delay, reverb, drive) work on the whole sound.
@@ -43,6 +43,7 @@ Kayak is a fork of [Dinghy](https://github.com/zvenson/dinghy) (zvenson), the mi
    - 4.6 [LFO (LFO)](#46-lfo-lfo)
    - 4.7 [Global (GLO)](#47-global-glo)
    - 4.8 [Performance knobs (PERFORM)](#48-performance-knobs-perform)
+   - 4.9 [Your own samples (SMP)](#49-your-own-samples-smp)
 5. [Effects (FX)](#5-effects-fx)
    - 5.1 [Phaser](#51-phaser)
    - 5.2 [Delay](#52-delay)
@@ -187,7 +188,7 @@ rendered again in the background, and the new material replaces the old one once
 
 | Knob | Range | What it does |
 | --- | --- | --- |
-| TYPE | PLUCK, DRONE, BELL, BREATH, CHIRP, SWEEP, VOWEL, METAL | The kind of material |
+| TYPE | PLUCK, DRONE, BELL, BREATH, CHIRP, SWEEP, VOWEL, METAL, then SMP1 … SMP8 | The kind of material; SMP: one of your samples ([4.9](#49-your-own-samples-smp)) |
 | TONE | 0–100 % | Brightness / timbre of the material |
 | MOVE | 0–100 % | How much the material moves over time |
 | SEED | 0–127 | A different variation of the same settings |
@@ -283,6 +284,34 @@ part of the sound.
 
 The defaults are BAL, CUTS, D.FB and DELAY: the balance of the two layers, both cutoffs, the delay's feedback and
 mix.
+
+### 4.9 Your own samples (SMP)
+
+The FM-1 keeps **8 samples** (the SMK-37: 4) in its flash memory, each up to **0.74 s**, mono, 22 050 Hz: the size of
+the buffer the grains read. They are sent from a web page over USB:
+
+**[Kayak samples](https://tobe313.github.io/Kayak/samples/)**: Chrome or Edge on a computer, or Chrome on Android with a USB OTG cable
+(Safari, iPhone / iPad and Firefox on Android cannot reach MIDI devices).
+
+1. Connect the FM-1 over USB, open the page, press **Connect the FM-1** and allow MIDI ("system exclusive messages").
+   The page reads the eight slots: their names, lengths and notes.
+2. Choose one or more audio files (WAV, MP3, OGG, FLAC…). Each one is made mono at 22 050 Hz; drag on its wave to
+   choose the 0.74 s that are kept (the page starts where the sound starts). **Play** listens to that part.
+3. Give it a name (8 letters), its note (**ROOT**: played on that key it keeps its pitch; C4 by default) and a slot,
+   then **Send**. The sound of the FM-1 stops for about half a second while the slot is written.
+4. On the FM-1: EDIT, GRN SRC A (or B), turn **TYPE** past METAL to **SMP1** … **SMP8**.
+
+With a sample, the source's other knobs change meaning:
+
+| Knob | With a sample |
+| --- | --- |
+| TONE | Under 64: darker (a low-pass), from 64 up: as it is |
+| MOVE | Where the buffer starts in the sample (0: its start; the sample loops to fill the buffer) |
+| SEED | From 64 up: the sample backwards |
+
+**Erase** on the page empties a slot. An empty slot is silent. A sound (preset) that uses SMP3 plays whatever is in
+slot 3 at the time. With SRC B on a sample, its pitch follows SRC A's ROOT (one root for both, as for the rendered
+sources).
 
 ## 5. Effects (FX)
 
@@ -524,6 +553,7 @@ Presets 1–8 are ChoralRoot's GRAIN sounds, with Kayak's filter, envelope, LFO 
 
 | Version | Changes |
 | --- | --- |
+| **1.2** | Your own samples: a web page ([Kayak samples](https://tobe313.github.io/Kayak/samples/)) sends up to 8 samples of 0.74 s into the FM-1 over USB-MIDI; SRC A / B TYPE SMP1 … SMP8 plays them. |
 | **1.1** | OberVave's chorus replaced by a stereo phaser (FX PHASER: RATE DEPTH FDBK MIX). |
 | **1.0** | HOME's two views, MAIN and WAVES (the waves alone on the whole screen), turned by HOME again or SELECT. SELECT no longer leaves HOME. |
 | **0.9** | REC arms the sequencer's recording; the highest F# writes a rest. Ratchet and chance for the arp (ARP+) and the steps (SEQ+). With the arp on, the sequencer's steps play through it. GRAIN pages named GRN. Both layers drawn, the current one in front. HOME: four performance knobs chosen on GLO › PERFORM (by default the layers' balance, both cutoffs, the delay's feedback and mix), shown over the scope. ANA pages: the analog output over half a second. User presets, settings and the sequence of 0.8 are kept. |
