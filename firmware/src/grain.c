@@ -595,7 +595,7 @@ static void gp_audio(int32_t *out, uint32_t n)
             if (alev && (V->gate || V->enva || e0)) {
                 uint32_t inc = pitch_inc((uint32_t)clamp((int32_t)V->note * 16 + ooct * 192 + apit, 0, 2047));
                 uint32_t p1 = V->ph1, p2 = V->ph2, ps = V->phs, i1, i2;
-                int32_t dd, g = mulq15(mulq15(V->lvl, alev), amod);
+                int32_t dd, g = mulq15(mulq15(V->lvl, alev), amod) * 2;   /* (x 2: as loud as a voice of grains) */
                 inc = (inc >> 8) * (gp_bend_q16 >> 8);
                 dd = mulq16((int32_t)inc, (uint32_t)odet);
                 i1 = inc - (uint32_t)dd;
