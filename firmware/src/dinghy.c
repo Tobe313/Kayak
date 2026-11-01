@@ -562,23 +562,23 @@ static void app_main(void)
                 dirty = 1;
                 t_change = fm1_ms;
             }
+            /* (a page changed is not saved by itself: a save erases a flash sector with the interrupts off for some
+             * 50 ms, and the LED scan stops on one column meanwhile, a visible jump. The page goes with the next save) */
             if (b & (1u << BTN_EDIT)) {         /* EDIT: the sources and the grains, where it was left; again: the next */
                 set.page = (uint8_t)(view == V_PAGES && pg <= PG_GRAIN2 ? (pg >= PG_GRAIN2 ? PG_SRC_A : pg + 1u) : edit_pg);
-                view = V_PAGES; dirty = 1; t_change = fm1_ms;
+                view = V_PAGES;
             }
             if (b & (1u << BTN_SEL)) {          /* SEL: the filter's two pages, the same way */
                 set.page = (uint8_t)(view == V_PAGES && (pg == PG_FILTER || pg == PG_FILTER2) ? (pg == PG_FILTER ? PG_FILTER2 : PG_FILTER) : filt_pg);
-                view = V_PAGES; dirty = 1; t_change = fm1_ms;
+                view = V_PAGES;
             }
-            if (b & (1u << BTN_ENV)) { view = V_PAGES; set.page = (uint8_t)PG_ENV; dirty = 1; t_change = fm1_ms; }
-            if (b & (1u << BTN_LFO)) { view = V_PAGES; set.page = (uint8_t)PG_LFO; dirty = 1; t_change = fm1_ms; }
+            if (b & (1u << BTN_ENV)) { view = V_PAGES; set.page = (uint8_t)PG_ENV; }
+            if (b & (1u << BTN_LFO)) { view = V_PAGES; set.page = (uint8_t)PG_LFO; }
             if (b & (1u << BTN_FX)) {           /* FX: to the effects' pages and back, each where it was left */
                 if (view != V_PAGES) { if (set.page < FX_PAGE0) { sound_pg = set.page; set.page = (uint8_t)fx_pg; } }
                 else if (set.page < FX_PAGE0) { sound_pg = set.page; set.page = (uint8_t)fx_pg; }
                 else { fx_pg = set.page; set.page = (uint8_t)sound_pg; }
                 view = V_PAGES;
-                dirty = 1;
-                t_change = fm1_ms;
             }
             pg = set.page;
             if (view == V_SEQ) {                /* SEQ: the cursor, a rest, TEMPO LENGTH DIV SWING */
@@ -603,8 +603,6 @@ static void app_main(void)
                     set.page = (uint8_t)(c < lo ? lo : c > hi ? hi : c);
                     pg = set.page;
                     view = V_PAGES;
-                    dirty = 1;
-                    t_change = fm1_ms;
                 }
                 for (k = 0; k < 4u; k++)        /* the page's values */
                     if ((e = fm1_enc_take(ENC_KNOB1 + k)) != 0) {

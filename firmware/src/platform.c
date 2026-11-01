@@ -225,6 +225,10 @@ static int area_save(uint32_t at, uint32_t sectors, uint32_t magic, const void *
     h[2] = crc32(p, n);
     for (k = 0; k < sectors; k++) {
         fm1_wdt_feed();                         /* (~50 ms an erase) */
+#if !BOARD_SMK37
+        fm1__led_lines(0);                      /* (Kayak) the LEDs dark while the erase holds the interrupts: the scan
+                                                 * stops with them, and one column stuck lit for 50 ms is a visible jump */
+#endif
         if ((rc = fl_erase4k(at + k * 0x1000u, &took)) != 0)
             return rc;
     }
