@@ -486,6 +486,23 @@ static void gp_kill(uint32_t vi)                  /* the grains of voice vi go *
         if (gpg[i].owner == vi + 1u)
             gpg[i].owner = 0;
 }
+/* the polyphony (1.3): the voices a new note may take (GLO's VOICES: the others end what they play); past it a note
+ * takes the quietest voice let go, else the oldest held (gp_voice_on) */
+static volatile uint32_t ctl_poly = GP_NV;
+/* the audio running late (dinghy.c measures it): the quietest voice, a released one first, stops at once */
+static void gp_shed(void)
+{
+    uint32_t v, pick = GP_NV, best = 0xFFFFFFFFu;
+    for (v = 0; v < GP_NV; v++)
+        if (gpv[v].gate || gpv[v].env) {
+            uint32_t score = (gpv[v].gate ? 0x80000000u : 0u) + (uint32_t)gpv[v].env;
+            if (score < best) { best = score; pick = v; }
+        }
+    if (pick == GP_NV) return;
+    gp_kill(pick);
+    gpv[pick].gate = 0;
+    gpv[pick].env = gpv[pick].envg = gpv[pick].enva = 0;
+}
 
 /* the arpeggiator, the sequencer, the keys' events (kayak_seq.h, after the voices) */
 static void kayak_events(void);
@@ -684,10 +701,10 @@ static void gp_audio(int32_t *out, uint32_t n)
 /* ---- the voices, from the audio side (the keys' events, the arpeggiator, the sequencer: kayak_seq.h) */
 static void gp_voice_on(uint32_t note, uint32_t vel)
 {
-    uint32_t v, pick = 0, best = 0xFFFFFFFFu;
+    uint32_t v, pick = 0, best = 0xFFFFFFFFu, nv = ctl_poly < 1u ? 1u : ctl_poly > GP_NV ? GP_NV : ctl_poly;
     if (note > 127u || !vel)
         return;
-    for (v = 0; v < GP_NV; v++) {               /* the same note, else a free voice, else the quietest, else the oldest */
+    for (v = 0; v < nv; v++) {               /* the same note, else a free voice, else the quietest, else the oldest */
         uint32_t score = gpv[v].note == note && gpv[v].gate ? 0u
                        : gpv[v].gate ? 0x80000000u + gpv[v].age : (uint32_t)gpv[v].env + 1u;
         if (score < best) { best = score; pick = v; }

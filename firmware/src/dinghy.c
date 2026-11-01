@@ -15,7 +15,10 @@
  *   SEL        the layer's filter (OberVave's): GRN FILT / ANA FILT (TYPE CUT RES DRIVE), + (KTRK SEM)
  *   ENV LFO    the layer's ADSR (ATK DEC SUS REL), its LFO (RATE WAVE DEPTH DEST)
  *   GLO        GLOBAL: the two layers' levels, the MIDI channel (OMNI or 1..16), CHORD: the chord a key plays (-: the
- *              one note, MAJ MIN 7 MAJ7 MIN7 SUS2 SUS4 DIM AUG POWER ADD9); PERFORM: what HOME's four knobs turn
+ *              one note, MAJ MIN 7 MAJ7 MIN7 SUS2 SUS4 DIM AUG POWER ADD9); PERFORM: what HOME's four knobs turn;
+ *              VOICES: VOICE (the most notes at once, 1..8: past it a note takes the quietest voice let go, else the
+ *              oldest held), AUTO (a voice stops when the audio runs late), LOAD (the audio's load, the worst of
+ *              the last half second)
  *   ARP        a short press: the arpeggiator on (lit) or off, and its pages (MODE DIV OCT GATE; ARP+: RATCH, the hits
  *              in a step, CHNCE, the chance it plays); held: HOLD (the notes
  *              stay after the keys are up, ARP blinks; then the keys transpose them)
@@ -62,9 +65,22 @@ static int app_sysex(const uint8_t *p, uint32_t n);
 #include "kayak_smp.h"
 
 /* ---- the sound (runs in the audio ISR: keep it short, no flash, no screen) */
+/* the load (1.3): the share of its time the block took, the worst of the last moments (the main loop lets it fall);
+ * over 85 % with AUTO on, a voice goes (gp_shed): the sound must not crackle */
+static volatile uint32_t ui_load, ctl_guard = 1;
 static void app_audio(int32_t *out, uint32_t n)
 {
+#ifndef DINGHY_HOST
+    static uint32_t wait;                       /* (blocks before the next voice may go: one every ~0.1 s) */
+    uint32_t t0 = fm1_ticks(), load;
+#endif
     gp_audio(out, n);
+#ifndef DINGHY_HOST
+    load = (fm1_ticks() - t0) * 100u / (n * 5442u / 10u);   /* (24 MHz ticks: 544.2 a frame at 44.1 kHz) */
+    if (load > ui_load) ui_load = load;
+    if (wait) wait--;
+    else if (ctl_guard && load > 85u) { gp_shed(); wait = 16; }
+#endif
 }
 
 /* ---- the pages: four knobs each (QX: none, QCH: the MIDI channel, QCHORD: the chord a key plays, the device's own).
@@ -74,10 +90,13 @@ static void app_audio(int32_t *out, uint32_t n)
 #define QCH 0xFEu
 #define QCHORD 0xFDu
 #define QP1 0xF9u                               /* QP1 .. QP1 + 3: which value HOME's knob 1 .. 4 turns (PERFORM) */
+#define QPOLY 0xF8u                             /* (GLO's VOICES: the polyphony, AUTO, the load) */
+#define QGUARD 0xF7u
+#define QLOAD 0xF6u
 #define PQ_BAL 0xF0u                            /* (HOME's knobs only: the two levels as a balance, both cutoffs) */
 #define PQ_CUTS 0xF1u
 enum { P_SRCA, P_SRCB, P_GRAIN, P_GRAIN2, P_FILT, P_FILT2, P_ENV, P_LFO, P_OSC, P_OSC2, P_AFILT, P_AFILT2, P_AENV,
-       P_ALFO, P_ARP, P_CHO, P_DLY, P_REV, P_DRV, P_MIX, P_GLOBAL, P_ARP2, P_PERF, NPAGE };   /* (P_SRCA, P_SRCB: the wave of A, of B) */
+       P_ALFO, P_ARP, P_CHO, P_DLY, P_REV, P_DRV, P_MIX, P_GLOBAL, P_ARP2, P_PERF, P_VOICE, NPAGE };   /* (P_SRCA, P_SRCB: the wave of A, of B) */
 typedef struct { const char *name; uint8_t q[4]; } page_t;
 static const page_t PAGES[NPAGE] = {
     {"GRN SRC A", {GQ_TYPE_A, GQ_TONE_A, GQ_MOTION_A, GQ_SEED_A}},
@@ -92,7 +111,8 @@ static const page_t PAGES[NPAGE] = {
     {"FX PHASER", {GQ_PRATE, GQ_PDEPTH, GQ_PFB, GQ_PMIX}}, {"FX DELAY", {GQ_DTIME, GQ_DFB, GQ_DTONE, GQ_DMIX}},
     {"FX REVERB", {GQ_RSIZE, GQ_RDAMP, GQ_RPRE, GQ_RMIX}}, {"FX DRIVE", {GQ_VTYPE, GQ_VAMT, GQ_VTONE, GQ_VMIX}},
     {"FX MIX", {GQ_PMIX, GQ_DMIX, GQ_RMIX, GQ_VMIX}}, {"GLOBAL", {GQ_GLEV, GQ_ALEV, QCH, QCHORD}},
-    {"ARP+", {GQ_ARATCH, GQ_ACHANCE, QX, QX}}, {"PERFORM", {QP1, QP1 + 1u, QP1 + 2u, QP1 + 3u}}};
+    {"ARP+", {GQ_ARATCH, GQ_ACHANCE, QX, QX}}, {"PERFORM", {QP1, QP1 + 1u, QP1 + 2u, QP1 + 3u}},
+    {"VOICES", {QPOLY, QGUARD, QLOAD, QX}}};
 /* HOME's knobs: what each turns, picked on PERFORM (GLO's second page) */
 static const struct { uint8_t q; const char *name; } PERF[] = {
     {GQ_MORPH, "MORPH"}, {GQ_POS, "POS"}, {GQ_SIZE, "SIZE"}, {GQ_DENS, "DENS"}, {GQ_SPRD, "SPRD"}, {GQ_RAND, "RAND"},
@@ -144,7 +164,7 @@ static const uint8_t FN_PAGE[NFN][2][5] = {    /* each function's pages: the gra
     {{P_ARP, P_ARP2, 0xFF}, {P_ARP, P_ARP2, 0xFF}},
     {{P_CHO, P_DLY, P_REV, P_DRV, 0xFF}, {P_CHO, P_DLY, P_REV, P_DRV, 0xFF}},
     {{P_MIX, 0xFF}, {P_MIX, 0xFF}},
-    {{P_GLOBAL, P_PERF, 0xFF}, {P_GLOBAL, P_PERF, 0xFF}}};
+    {{P_GLOBAL, P_PERF, P_VOICE, 0xFF}, {P_GLOBAL, P_PERF, P_VOICE, 0xFF}}};
 static uint32_t fn_count(uint32_t fn, uint32_t layer)
 {
     uint32_t n = 0;
@@ -307,8 +327,8 @@ static void draw_scope(const uint8_t *perf, uint32_t y)
     cv_blit(0, y);
 }
 
-static void draw_cells(uint32_t pg, uint32_t ch, uint32_t chord, const uint8_t *perf)   /* ch: the MIDI channel (QCH),
-                                                 * chord: QCHORD's, perf: PERFORM's */
+static void draw_cells(uint32_t pg, uint32_t ch, uint32_t chord, const uint8_t *perf, uint32_t poly, uint32_t guard,
+                       uint32_t load)       /* ch: the MIDI channel (QCH), chord: QCHORD's, perf: PERFORM's; VOICES */
 {
     static const char *const KNOB[4] = {"KNOB1", "KNOB2", "KNOB3", "KNOB4"};
     uint32_t c;
@@ -324,6 +344,22 @@ static void draw_cells(uint32_t pg, uint32_t ch, uint32_t chord, const uint8_t *
             if (ch) gq_put_dec(&p, ch); else gq_put_str(&p, "OMNI");
             *p = 0;
             w = (int32_t)ch * 48 / 16;
+        } else if (q == QPOLY) {                /* the most voices playing at once */
+            name = "VOICE";
+            gq_put_dec(&p, poly);
+            *p = 0;
+            w = (int32_t)poly * 48 / (int32_t)GP_NV;
+        } else if (q == QGUARD) {               /* a voice goes when the audio runs late */
+            name = "AUTO";
+            gq_put_str(&p, guard ? "ON" : "OFF");
+            *p = 0;
+            w = guard ? 48 : 0;
+        } else if (q == QLOAD) {                /* (read only) the audio's load, the worst of the last moments */
+            name = "LOAD";
+            gq_put_dec(&p, load);
+            *p++ = '%';
+            *p = 0;
+            w = (int32_t)(load > 100u ? 100u : load) * 48 / 100;
         } else if (q >= QP1 && q < QP1 + 4u) {  /* what HOME's knob turns */
             name = KNOB[q - QP1];
             gq_put_str(&p, PERF[perf[q - QP1] % NPERF].name);
@@ -623,7 +659,7 @@ static void led_fn(uint32_t id, uint32_t on)
 }
 
 /* ---- MIDI in: from the main loop, and from app_idle while the screen draws (idle_ok) */
-static struct { uint8_t oct, ch, fn, layer, cur, mod, chord, perf[4]; int8_t p[GQ_N]; } set;   /* what survives a
+static struct { uint8_t oct, ch, fn, layer, cur, mod, chord, perf[4]; int8_t p[GQ_N]; uint8_t poly, guard, rsv[6]; } set;   /* what survives a
                                                  * power-off */
 static void knob_turn(uint32_t q, uint32_t k, int32_t e)   /* a sound's value: a list round, a step a detent; else
                                                  * the faster the bigger */
@@ -771,7 +807,7 @@ static void app_main(void)
                                                  * function FX goes back to, the page each function was left on */
     uint32_t t_dn[2] = {0, 0}, fired[2] = {1, 1};   /* ARP, FX: when pressed, a long press already done */
     uint32_t view = V_HOME, view_drawn = ~0u, t_home = 0, scope_t = 0, line_drawn = ~0u, seq_drawn = ~0u, seq_t = 0;
-    uint32_t hview = 0, srow = 1, spage = 0, rec = 0, wave_fg = ~0u, wave_ana = ~0u, wave_aq = 0, step_in = 0, pat_dirty = 0, arp_last = A_UP, beat_seen = 0, beat_t = 0;   /* srow: SEQ's row */
+    uint32_t load_t = 0, load_shown = 0, hview = 0, srow = 1, spage = 0, rec = 0, wave_fg = ~0u, wave_ana = ~0u, wave_aq = 0, step_in = 0, pat_dirty = 0, arp_last = A_UP, beat_seen = 0, beat_t = 0;   /* srow: SEQ's row */
     uint8_t held[27][SEQ_CHORD] = {{0}};        /* the notes each key plays */
 #if BOARD_SMK37
     static const uint8_t WHITE[16] = {0, 2, 4, 6, 7, 9, 11, 12, 14, 16, 18, 19, 21, 23, 24, 26};   /* white key -> key */
@@ -810,6 +846,10 @@ static void app_main(void)
         static struct { uint8_t oct, ch, fn, layer, cur, mod, chord, perf[4]; int8_t p[GQ_N_V09]; } s9;
         static struct { uint8_t oct, ch, fn, layer, cur, mod, chord; int8_t p[GQ_N_V08]; } s8;
         int ok = !log_load(&set, sizeof set);
+        if (!ok && !log_load(&set, sizeof set - 8u)) {   /* 1.1 / 1.2's: no VOICES yet (the same fields before) */
+            set.poly = GP_NV, set.guard = 1;
+            ok = 1;
+        }
         if (!ok && !log_load(&s9, sizeof s9)) {
             set.oct = s9.oct, set.ch = s9.ch, set.fn = s9.fn, set.layer = s9.layer, set.cur = s9.cur;
             set.mod = s9.mod, set.chord = s9.chord;
@@ -828,10 +868,12 @@ static void app_main(void)
         if (set.perf[0] == 0u && set.perf[1] == 8u && set.perf[2] == 24u && set.perf[3] == 26u)
             for (k = 0; k < 4u; k++) set.perf[k] = PERF_DEF[k];   /* (the first 0.9's defaults: today's) */
         if (!ok) set.fn = 0xFF;                 /* (nothing: the defaults below) */
+        if (set.poly < 1u || set.poly > GP_NV || set.guard > 1u) set.poly = GP_NV, set.guard = 1;
     }
     if ((int8_t)set.oct < -2 || (int8_t)set.oct > 2 || set.ch > 16u || set.fn >= NFN
         || set.layer > 1u || set.chord >= NCHORD || !preset_ok(set.cur)) {
         set.oct = 0, set.ch = 0, set.fn = FN_EDIT, set.layer = 0, set.cur = 0, set.mod = 0, set.chord = 0;
+        set.poly = GP_NV, set.guard = 1;
         for (k = 0; k < 4u; k++) set.perf[k] = PERF_DEF[k];
         preset_load(0);
     } else
@@ -1077,6 +1119,14 @@ static void app_main(void)
                         }
                         view = V_PAGES;
                         if (q == QX) continue;
+                        if (q == QPOLY || q == QGUARD) {   /* VOICES: the device's */
+                            if (q == QPOLY) set.poly = (uint8_t)clamp((int32_t)set.poly + e, 1, (int32_t)GP_NV);
+                            else set.guard = e > 0;
+                            dirty = 1;
+                            t_change = fm1_ms;
+                            continue;
+                        }
+                        if (q == QLOAD) continue;
                         if (q >= QP1 && q < QP1 + 4u) {   /* PERFORM: what HOME's knob turns, round the list */
                             uint8_t *pp = &set.perf[q - QP1];
                             *pp = (uint8_t)((uint32_t)((int32_t)(*pp % NPERF) + e % (int32_t)NPERF + (int32_t)NPERF) % NPERF);
@@ -1106,6 +1156,13 @@ static void app_main(void)
 
         if (view != V_SEQ) rec = 0;             /* (REC: on SEQ's screen only) */
         smp_poll();
+        ctl_poly = set.poly;
+        ctl_guard = set.guard;
+        if (fm1_ms - load_t >= 500u) {          /* the load shown: the worst of the last half second */
+            load_t = fm1_ms;
+            load_shown = ui_load;
+            ui_load = 0;
+        }
         midi_in();
         if (clk_bpm && fm1_ms - clk_t0 > 2000u) clk_bpm = 0, clk_run = 0;   /* the clock has stopped coming */
         ctl_tempo_ext = clk_bpm >= 40u && clk_bpm <= 240u ? clk_bpm : 0u;   /* a MIDI clock sets the tempo */
@@ -1193,9 +1250,13 @@ static void app_main(void)
                 for (k = 0; k < 4u; k++) {
                     uint32_t q = PAGES[pg].q[k];
                     sum = sum * 131u + (q == QX ? 0u : q == QCH ? set.ch : q == QCHORD ? set.chord
-                                        : q >= QP1 && q < QP1 + 4u ? set.perf[q - QP1] : (uint8_t)gp_p[q]);
+                                        : q >= QP1 && q < QP1 + 4u ? set.perf[q - QP1] : q == QPOLY ? set.poly
+                                        : q == QGUARD ? set.guard : q == QLOAD ? load_shown : (uint8_t)gp_p[q]);
                 }
-                if (sum != cells_drawn) { cells_drawn = sum; draw_cells(pg, set.ch, set.chord, set.perf); }
+                if (sum != cells_drawn) {
+                    cells_drawn = sum;
+                    draw_cells(pg, set.ch, set.chord, set.perf, set.poly, set.guard, load_shown);
+                }
                 if ((st = (uint32_t)(oct + 2) | (uint32_t)set.ch << 4 | (uint32_t)(ctl_transp + 32) << 9) != status_drawn) { status_drawn = st; draw_status(oct, set.ch, ctl_transp); }
             }
             if (!waves && (st = midi_src | clk_bpm << 2 | clk_run << 12) != midi_drawn) { midi_drawn = st; draw_midi(midi_src, clk_bpm, clk_run); }
