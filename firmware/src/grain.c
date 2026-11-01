@@ -295,6 +295,14 @@ static volatile uint32_t gp_bend_q16 = 65536;    /* the SMK-37's pitch wheel */
 
 static inline uint32_t gp_scale(uint32_t n, uint32_t f16) { return (n >> 16) * f16 + (((n & 0xFFFFu) * f16) >> 16); }
 /* the grain window, Hann: sin^2(pi x) = (1 - cos(2 pi x)) / 2, Q15 */
+static int32_t gp_soft(int32_t x)                /* the output: as it is up to 20000, then bent towards 32767 */
+{
+    int32_t a = x < 0 ? -x : x, y;
+    if (a <= 20000) return x;
+    a = a - 20000 > 150000 ? 150000 : a - 20000;
+    y = 20000 + a * 12767 / (a + 12767);
+    return x < 0 ? -y : y;
+}
 static inline int32_t gp_win(uint32_t wph) { return (32767 - sine_i(wph + 0x40000000u)) >> 1; }
 /* A and B at source sample i, mixed by MORPH mq (Q15, 0 .. 32768) */
 static inline int32_t gp_mix(const int16_t *A, const int16_t *B, uint32_t i, int32_t mq)
@@ -635,8 +643,11 @@ static void gp_audio(int32_t *out, uint32_t n)
     drive_process(out, dry, n, (uint32_t)gp_p[GQ_VTYPE], (uint32_t)gp_p[GQ_VAMT], (uint32_t)gp_p[GQ_VTONE],
                   (uint32_t)gp_p[GQ_VMIX]);
     fx_process(out, dry, dry, dry, n);
-    for (i = 0; i < n; i++)                     /* the oscilloscope's ring */
+    for (i = 0; i < n; i++) {                   /* a soft knee over the top (chords on a loud sound); the scope's ring */
+        out[2u * i] = gp_soft(out[2u * i]);
+        out[2u * i + 1u] = gp_soft(out[2u * i + 1u]);
         scope[(scope_w + i) % SCOPE_N] = (int16_t)((out[2u * i] + out[2u * i + 1u]) >> 1);
+    }
     scope_w += n;
 }
 
