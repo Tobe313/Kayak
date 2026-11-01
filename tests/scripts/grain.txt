@@ -18,6 +18,7 @@
 2900 enc 4 30
 3100 shot
 3200 btn 2
+3270 shot
 3300 enc 0 2
 3400 shot
 3500 enc 5 -127
