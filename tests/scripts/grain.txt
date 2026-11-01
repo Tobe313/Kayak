@@ -6,7 +6,7 @@
 # ARP held (HOLD), a note let go and still held, HOME. 0.8: ARP on, GLO's CHORD (MAJ), a key while HOLD holds: the arp
 # transposed (HOME shows it), HOLD off, a chord on one key; SEQ's rows: PATTERN, step 1's CHORD and GATE, a key writing
 # a chord into it, PLAY, a key on the pages transposing the sequence, STOP. 0.9: REC arms the keys, the top C# a
-# rest; GLO's PERFORM, a knob on HOME; SEQ+ (RATCH CHANCE), PLAY with the arp on (the steps through it).
+# rest; GLO's PERFORM, a knob on HOME; SEQ+ (RATCH CHANCE), PLAY with the arp on (the steps through it). 1.0: HOME again (WAVES), SELECT back (MAIN).
 # tests/run_host.sh tests/scripts/grain.txt
 700 shot
 1800 keys 0x4880
@@ -91,7 +91,11 @@
 13000 btnup 10
 13200 keys 0x80
 13500 shot
+13520 btn 8
+13590 shot
 13600 keys 0
+13700 enc 0 1
+13760 shot
 13800 btn 11
 13900 enc 0 -5
 14000 shot

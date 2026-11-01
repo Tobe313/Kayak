@@ -31,8 +31,10 @@
  *   transpose  while the sequencer runs, or the arp holds notes (HOLD), a key (but while REC writes) transposes
  *              what plays, from C4, instead of playing: +-2 octaves
  *   PLAY       the sequencer runs (lit, a blink a beat) or stops; MIDI START / STOP too, a MIDI clock sets the tempo
- *   HOME       the screen after the splash, a short press too: the layers' waves, an oscilloscope of the output, over
- *              it the four performance knobs (GLO's PERFORM), which turn there; SELECT goes back to the pages
+ *   HOME       the screen after the splash, a short press too, its views turned by HOME again or SELECT: MAIN (the
+ *              layers' waves, an oscilloscope of the output, over it the four performance knobs: GLO's PERFORM),
+ *              WAVES (the grains, the analog layer's output, the output, the whole screen); the knobs turn PERFORM's
+ *              there; a function button goes back to the pages
  *   PRESETS    the sound: the factory presets, then the user presets saved; MIDI program change too
  *   SAVE       save the sound: PRESETS picks the user slot (1..16), SAVE again writes it, HOME cancels
  *   OCT- OCT+  the octave
@@ -195,6 +197,12 @@ static int32_t enc_fast(uint32_t k, int32_t e)
 #define WV_Y 70u                                /* the wave band: 240 x 64 */
 #define CELL_Y 142u                             /* the four values: 240 x 56 */
 #define SCOPE_Y 140u                            /* HOME: the oscilloscope, 240 x 64 */
+/* HOME's views (HOME again, or SELECT, turns through them): MAIN (the layer, both layers' waves, the scope with the
+ * performance knobs, the line), WAVES (the grains, the analog layer's output, the output: the whole screen, no text) */
+enum { HV_MAIN, HV_WAVES, NHVIEW };
+#define HW_GRAIN_Y 12u                          /* WAVES: the three bands of 64 */
+#define HW_ANA_Y 88u
+#define HW_SCOPE_Y 164u
 
 static int8_t wv_lo[240], wv_hi[240];          /* the band's envelope, a min / max a column (of 127) */
 static void wave_take(uint32_t pg)              /* SRC A: A, SRC B: B, else the mix by MORPH */
@@ -234,18 +242,18 @@ static void draw_ana(uint32_t front)
     }
 }
 #define C_BACK RGB(50, 50, 50)                  /* the layer behind */
-/* the band: the layer of the pages (fg) in front, the other dim behind it; the grains: the material they read (A on
- * SRC A, B on SRC B, else the mix), POS and SPRD, each grain sounding */
-static void draw_wave(uint32_t pg, uint32_t fg)
+/* the band at y: the layer of the pages (fg) in front, the other dim behind it (both: 0, the one alone); the grains: the
+ * material they read (A on SRC A, B on SRC B, else the mix), POS and SPRD, each grain sounding */
+static void draw_wave(uint32_t pg, uint32_t fg, uint32_t y, uint32_t both)
 {
     uint32_t x, k;
     uint16_t col = pg == 0u ? C_SRC_A : pg == 1u ? C_ACC : C_KEYW;
     cv_begin(240, 64, C_BLACK);
     if (fg) {                                   /* the analog layer in front: its output, the grains behind */
-        for (x = 0; x < 240u; x++)
+        for (x = 0; x < 240u && both; x++)
             cv_rect((int32_t)x, 32 - (wv_hi[x] >> 2), 1, (wv_hi[x] >> 2) - (wv_lo[x] >> 2) + 1, C_BACK);
         draw_ana(1);
-        cv_blit(0, WV_Y);
+        cv_blit(0, y);
         return;
     }
     if (pg >= 2u) {                             /* where the grains start: POS (moved by SCAN, the LFO), SPRD round it */
@@ -253,7 +261,7 @@ static void draw_wave(uint32_t pg, uint32_t fg)
         cv_rect(c - s / 2, 0, s, 64, C_DIMBAR);
         cv_rect(c, 0, 1, 64, C_WHITE);
     }
-    draw_ana(0);                                /* the analog layer behind, dim */
+    if (both) draw_ana(0);                      /* the analog layer behind, dim */
     for (x = 0; x < 240u; x++)
         cv_rect((int32_t)x, 32 - (wv_hi[x] >> 2), 1, (wv_hi[x] >> 2) - (wv_lo[x] >> 2) + 1, col);
     for (k = 0; k < GP_NG; k++) {               /* the grains sounding: a line where each reads, as tall as its window */
@@ -263,12 +271,12 @@ static void draw_wave(uint32_t pg, uint32_t fg)
             cv_rect((int32_t)(g.pos * 240u / GS_N), 32 - h, 1, 2 * h + 1, C_WHITE);
         }
     }
-    cv_blit(0, WV_Y);
+    cv_blit(0, y);
 }
 
-/* HOME: the output as an oscilloscope, 240 frames (5.4 ms) from a rising zero crossing, scaled to its own peak; over it
- * the four knobs' values (perf: what each turns) */
-static void draw_scope(const uint8_t *perf)
+/* HOME: the output as an oscilloscope at y, 240 frames (5.4 ms) from a rising zero crossing, scaled to its own peak;
+ * over it the four knobs' values (perf: what each turns; 0: none) */
+static void draw_scope(const uint8_t *perf, uint32_t y)
 {
     static int16_t s[480];
     uint32_t w = scope_w, i, t = 0;
@@ -284,14 +292,14 @@ static void draw_scope(const uint8_t *perf)
         if (x) cv_line(x - 1, y0, x, y, C_ACC);
         y0 = y;
     }
-    for (i = 0; i < 4u; i++) {
+    for (i = 0; i < 4u && perf; i++) {
         const char *name = PERF[perf[i] % NPERF].name;
         char v[12];
         perf_text(perf[i], v);
         cv_text((int32_t)i * 60 + (60 - text_w(&FONT_S, name)) / 2, 0, &FONT_S, name, C_OFF);
         cv_text((int32_t)i * 60 + (60 - text_w(&FONT_S, v)) / 2, 46, &FONT_S, v, C_WHITE);
     }
-    cv_blit(0, SCOPE_Y);
+    cv_blit(0, y);
 }
 
 static void draw_cells(uint32_t pg, uint32_t ch, uint32_t chord, const uint8_t *perf)   /* ch: the MIDI channel (QCH),
@@ -758,7 +766,7 @@ static void app_main(void)
                                                  * function FX goes back to, the page each function was left on */
     uint32_t t_dn[2] = {0, 0}, fired[2] = {1, 1};   /* ARP, FX: when pressed, a long press already done */
     uint32_t view = V_HOME, view_drawn = ~0u, t_home = 0, scope_t = 0, line_drawn = ~0u, seq_drawn = ~0u, seq_t = 0;
-    uint32_t srow = 1, spage = 0, rec = 0, wave_fg = ~0u, wave_ana = ~0u, wave_aq = 0, step_in = 0, pat_dirty = 0, arp_last = A_UP, beat_seen = 0, beat_t = 0;   /* srow: SEQ's row */
+    uint32_t hview = 0, srow = 1, spage = 0, rec = 0, wave_fg = ~0u, wave_ana = ~0u, wave_aq = 0, step_in = 0, pat_dirty = 0, arp_last = A_UP, beat_seen = 0, beat_t = 0;   /* srow: SEQ's row */
     uint8_t held[27][SEQ_CHORD] = {{0}};        /* the notes each key plays */
 #if BOARD_SMK37
     static const uint8_t WHITE[16] = {0, 2, 4, 6, 7, 9, 11, 12, 14, 16, 18, 19, 21, 23, 24, 26};   /* white key -> key */
@@ -963,8 +971,10 @@ static void app_main(void)
                 if (set.cur >= GP_NFACT) save_to = set.cur - GP_NFACT;
                 else while (save_to < NUSER - 1u && user.used[save_to]) save_to++;
             }
-            if (rel & (1u << BTN_HOME) && fm1_ms - t_home < 500u)   /* a short press: the wave and the scope */
+            if (rel & (1u << BTN_HOME) && fm1_ms - t_home < 500u) {   /* a short press: HOME; on HOME: its next view */
+                if (view == V_HOME) hview = (hview + 1u) % NHVIEW;
                 view = V_HOME;
+            }
             if (b & (1u << BTN_SEQ)) {          /* SEQ's screen; pressed again: its other page */
                 if (view == V_SEQ) spage ^= 1u;
                 view = V_SEQ;
@@ -1029,12 +1039,14 @@ static void app_main(void)
                         t_change = fm1_ms;
                     }
             } else {
-                if ((e = fm1_enc_take(ENC_SELECT)) != 0) {    /* the function's pages, round (from HOME: back first) */
+                if ((e = fm1_enc_take(ENC_SELECT)) != 0) {    /* the function's pages, round; HOME: its views */
                     int32_t c = (int32_t)fn_count(fn, layer);
-                    if (view == V_PAGES)
+                    if (view == V_HOME)
+                        hview = (uint32_t)((int32_t)hview + e % (int32_t)NHVIEW + (int32_t)NHVIEW) % NHVIEW;
+                    else {
                         fn_idx[fn][layer] = (uint32_t)(((int32_t)fn_idx[fn][layer] + e % c + c) % c);
-                    pg = FN_PAGE[fn][layer][fn_idx[fn][layer] % (uint32_t)c];
-                    view = V_PAGES;
+                        pg = FN_PAGE[fn][layer][fn_idx[fn][layer] % (uint32_t)c];
+                    }
                 }
                 for (k = 0; k < 4u; k++)        /* the page's values (HOME: PERFORM's) */
                     if ((e = fm1_enc_take(ENC_KNOB1 + k)) != 0) {
@@ -1115,13 +1127,14 @@ static void app_main(void)
 #endif
 
         idle_ok = 1;                            /* the drawing below may read MIDI meanwhile (LCD_IDLE) */
-        st = saving ? 9u : view;
-        if (st != view_drawn) {                 /* another screen: everything under the name again */
+        st = saving ? 9u : view == V_HOME ? 16u + hview : view;
+        if (st != view_drawn) {                 /* another screen: everything under the name again (WAVES: all of it) */
+            if (st == 16u + HV_WAVES || view_drawn == 16u + HV_WAVES) lcd_fill(0, 0, 240, 240, C_BLACK);
+            else lcd_fill(0, 28, 240, 212, C_BLACK);
             view_drawn = st;
-            lcd_fill(0, 28, 240, 212, C_BLACK);
-            page_drawn = cells_drawn = status_drawn = midi_drawn = line_drawn = seq_drawn = wave_page = ~0u;
+            page_drawn = cells_drawn = status_drawn = midi_drawn = line_drawn = seq_drawn = wave_page = preset_drawn = ~0u;
         }
-        if ((st = set.cur | (uint32_t)set.mod << 8) != preset_drawn) { preset_drawn = st; draw_preset(set.cur, set.mod); }
+        if (st != 16u + HV_WAVES && (st = set.cur | (uint32_t)set.mod << 8) != preset_drawn) { preset_drawn = st; draw_preset(set.cur, set.mod); }
         if (saving) {
             if (page_drawn != ~1u) { page_drawn = ~1u; draw_text_box(0, 28, 240, &FONT_L, "SAVE", C_ACC, 1); }
             if ((st = save_to | (uint32_t)user.used[save_to] << 8) != save_drawn) { save_drawn = st; draw_save(save_to); }
@@ -1150,10 +1163,12 @@ static void app_main(void)
                 draw_seq_lines(row, bpm, play, rec);
             }
         } else {
-            uint32_t sum = pg, live = 0, wpg = view == V_HOME ? 2u : pg;
-            if (view == V_HOME) {
+            uint32_t sum = pg, live = 0, wpg = view == V_HOME ? 2u : pg, waves = view == V_HOME && hview == HV_WAVES;
+            if (waves) {                        /* HOME's WAVES: the grains, the analog layer, the output; nothing else */
+                if (fm1_ms - scope_t >= 40u) { scope_t = fm1_ms; draw_scope(0, HW_SCOPE_Y); }
+            } else if (view == V_HOME) {
                 if (page_drawn != 100u + layer) { page_drawn = 100u + layer; draw_text_box(0, 28, 240, &FONT_L, LAYER_NAME[layer], C_ACC, 1); }
-                if (fm1_ms - scope_t >= 40u) { scope_t = fm1_ms; draw_scope(set.perf); }   /* 25 frames a second */
+                if (fm1_ms - scope_t >= 40u) { scope_t = fm1_ms; draw_scope(set.perf, SCOPE_Y); }   /* 25 frames a second */
                 if ((st = (uint32_t)gp_p[GQ_AMODE] | ctl_seq_run << 4 | ctl_hold << 5 | bpm << 8 | (uint32_t)(ctl_transp + 32) << 16) != line_drawn) { line_drawn = st; draw_home_line(ctl_seq_run, bpm, ctl_hold); }
             } else {
                 if (pg != page_drawn) { page_drawn = pg; draw_text_box(0, 28, 240, &FONT_L, PAGES[pg].name, C_WHITE, 1); }
@@ -1165,7 +1180,7 @@ static void app_main(void)
                 if (sum != cells_drawn) { cells_drawn = sum; draw_cells(pg, set.ch, set.chord, set.perf); }
                 if ((st = (uint32_t)(oct + 2) | (uint32_t)set.ch << 4 | (uint32_t)(ctl_transp + 32) << 9) != status_drawn) { status_drawn = st; draw_status(oct, set.ch, ctl_transp); }
             }
-            if ((st = midi_src | clk_bpm << 2 | clk_run << 12) != midi_drawn) { midi_drawn = st; draw_midi(midi_src, clk_bpm, clk_run); }
+            if (!waves && (st = midi_src | clk_bpm << 2 | clk_run << 12) != midi_drawn) { midi_drawn = st; draw_midi(midi_src, clk_bpm, clk_run); }
             for (k = 0; k < GP_NG; k++) live |= gpg[k].owner;
             st = (uint32_t)(uint8_t)gp_p[GQ_MORPH];
             if (wpg != wave_page || grs.renders != wave_renders || (wpg >= 2u && st != wave_morph)) {
@@ -1183,7 +1198,12 @@ static void app_main(void)
                 if (!quiet || !wave_aq) wave_live |= fm1_ms - wave_t >= 50u;
                 if (fm1_ms - wave_t >= 50u) wave_ana = st, wave_aq = quiet;
             }
-            if (wave_live) { wave_live = 0; wave_t = fm1_ms; draw_wave(wpg, layer); }
+            if (wave_live) {
+                wave_live = 0;
+                wave_t = fm1_ms;
+                if (waves) { draw_wave(2, 0, HW_GRAIN_Y, 0); draw_wave(2, 1, HW_ANA_Y, 0); }
+                else draw_wave(wpg, layer, WV_Y, 1);
+            }
         }
         idle_ok = 0;
 
