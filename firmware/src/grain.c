@@ -492,10 +492,18 @@ static volatile uint32_t scope_w;
 
 /* ---- the audio side: n stereo frames added to out. A voice is two layers: the grains (through their filter and
  * ADSR) and the analog oscillators (through theirs), each at its LEVEL; the effects take the sum */
+/* the analog layer's output (its filter and ADSR on it, before the effects), for the ANA pages: half a second as 240
+ * columns of a min and a max, ANA_COL frames each; ana_w: the columns written so far */
+#define ANA_COL 92u
+static volatile int16_t ana_lo[240], ana_hi[240];
+static volatile uint32_t ana_w;
+static int32_t ana_cmin, ana_cmax;
+static uint32_t ana_cn;
+
 static void gp_audio(int32_t *out, uint32_t n)
 {
     const int16_t *A = gbuf[gsel[0]], *B = gbuf[gsel[1]];
-    int32_t acc[CTL], mono[CTL], atk = gp_env_step(gp_p[GQ_ATK]), rel = gp_env_step(gp_p[GQ_REL]);
+    int32_t acc[CTL], mono[CTL], amono[CTL], atk = gp_env_step(gp_p[GQ_ATK]), rel = gp_env_step(gp_p[GQ_REL]);
     int32_t dcy = gp_env_step(gp_p[GQ_DEC]), sus = gp_p[GQ_SUS] * 258;   /* the decay's step, the sustain level Q15 */
     int32_t aatk = gp_env_step(gp_p[GQ_AATK]), arel = gp_env_step(gp_p[GQ_AREL]), adcy = gp_env_step(gp_p[GQ_ADEC]);
     int32_t asus = gp_p[GQ_ASUS] * 258, glev = gp_p[GQ_GLEV] * 258, alev = gp_p[GQ_ALEV] * 258;
@@ -559,7 +567,7 @@ static void gp_audio(int32_t *out, uint32_t n)
                               + (gp_scan >> 17)) % (127u * 256u + 1u));
         gp_pos_view = e.pos_q8;
         for (i = 0; i < m; i++)
-            mono[i] = 0;
+            mono[i] = amono[i] = 0;
         for (v = 0; v < GP_NV; v++) {
             gp_voice_t *V = &gpv[v];
             int32_t e0, de;
@@ -626,7 +634,9 @@ static void gp_audio(int32_t *out, uint32_t n)
                     p2 += i2;
                     ps += i1 >> 1;
                     y = vflt_step(&fa, &V->flta, clamp(s, -65535, 65535));
-                    mono[i] += mulq15(mulq15(clamp(y, -32767, 32767), e0), g);
+                    y = mulq15(mulq15(clamp(y, -32767, 32767), e0), g);
+                    mono[i] += y;
+                    amono[i] += y;
                     e0 += de;
                 }
                 V->ph1 = p1;
@@ -639,6 +649,16 @@ static void gp_audio(int32_t *out, uint32_t n)
             out[2u * (b + i)] += mono[i];
             out[2u * (b + i) + 1u] += mono[i];
             dry[b + i] = mono[i];
+            if (amono[i] < ana_cmin) ana_cmin = amono[i];   /* (the ANA pages' picture) */
+            if (amono[i] > ana_cmax) ana_cmax = amono[i];
+            if (++ana_cn >= ANA_COL) {
+                ana_lo[ana_w % 240u] = (int16_t)clamp(ana_cmin, -32767, 32767);
+                ana_hi[ana_w % 240u] = (int16_t)clamp(ana_cmax, -32767, 32767);
+                ana_w++;
+                ana_cn = 0;
+                ana_cmin = 32767;
+                ana_cmax = -32767;
+            }
         }
     }
     /* OberVave's effects on the whole sound: the drive beside it, then the chorus, the delay and the reverb */

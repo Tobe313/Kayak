@@ -9,7 +9,8 @@
  *   ALGORITHM  the layer the sound's functions show: GRAIN (turned left) or ANALOG (turned right)
  *   EDIT       GRAIN: GRN SRC A, GRN SRC B (TYPE TONE MOVE SEED), GRN GRAIN (SIZE DENS POS SPRD), GRN GRAIN+ (MORPH
  *              RAND PITCH SCAN); ANALOG: ANA OSC (WAVE DETUN OCT PW), ANA OSC+ (SUB NOISE). The band shows the layer's
- *              wave in front, the other layer's dim behind it
+ *              picture in front, the other layer's dim behind it: the grains' material, the analog layer's
+ *              output over half a second (after its filter and ADSR)
  *   SEL        the layer's filter (OberVave's): GRN FILT / ANA FILT (TYPE CUT RES DRIVE), + (KTRK SEM)
  *   ENV LFO    the layer's ADSR (ATK DEC SUS REL), its LFO (RATE WAVE DEPTH DEST)
  *   GLO        GLOBAL: the two layers' levels, the MIDI channel (OMNI or 1..16), CHORD: the chord a key plays (-: the
@@ -22,10 +23,11 @@
  *   SELECT     the pages of the function its button opened (a button pressed again: the next one too)
  *   KNOB 1..4  the page's four values; the faster the turn, the bigger the step
  *   SEQ        the step sequencer's screen (lit), a list of rows: SELECT goes from row to row, the knobs set the
- *              row's values: PATTERN (TEMPO STEPS DIV SWING; SEQ+: ARP, the steps play the arpeggiator), a step
+ *              row's values: PATTERN (TEMPO STEPS DIV SWING), a step
  *              (NOTE CHORD VEL GATE: a note under C0 is a rest, a gate past 99 % a tie; SEQ+: RATCH CHNCE). SEQ
  *              again: the other page. REC (lit): the keys write the row's step (a chord: keys held together, or
- *              GLO's CHORD) and go to the next row, the top C# (dimly lit) writes a rest
+ *              GLO's CHORD) and go to the next row, the top F# (dimly lit) writes a rest. The arp on (ARP):
+ *              the steps' notes and chords play it
  *   transpose  while the sequencer runs, or the arp holds notes (HOLD), a key (but while REC writes) transposes
  *              what plays, from C4, instead of playing: +-2 octaves
  *   PLAY       the sequencer runs (lit, a blink a beat) or stops; MIDI START / STOP too, a MIDI clock sets the tempo
@@ -65,6 +67,8 @@ static void app_audio(int32_t *out, uint32_t n)
 #define QCH 0xFEu
 #define QCHORD 0xFDu
 #define QP1 0xF9u                               /* QP1 .. QP1 + 3: which value HOME's knob 1 .. 4 turns (PERFORM) */
+#define PQ_BAL 0xF0u                            /* (HOME's knobs only: the two levels as a balance, both cutoffs) */
+#define PQ_CUTS 0xF1u
 enum { P_SRCA, P_SRCB, P_GRAIN, P_GRAIN2, P_FILT, P_FILT2, P_ENV, P_LFO, P_OSC, P_OSC2, P_AFILT, P_AFILT2, P_AENV,
        P_ALFO, P_ARP, P_CHO, P_DLY, P_REV, P_DRV, P_MIX, P_GLOBAL, P_ARP2, P_PERF, NPAGE };   /* (P_SRCA, P_SRCB: the wave of A, of B) */
 typedef struct { const char *name; uint8_t q[4]; } page_t;
@@ -90,9 +94,39 @@ static const struct { uint8_t q; const char *name; } PERF[] = {
     {GQ_OPW, "A.PW"}, {GQ_OSUB, "A.SUB"}, {GQ_AATK, "A.ATK"}, {GQ_AREL, "A.REL"}, {GQ_ALDEPTH, "A.LFO"},
     {GQ_GLEV, "G.LEV"}, {GQ_ALEV, "A.LEV"}, {GQ_CMIX, "CHOR"}, {GQ_DMIX, "DELAY"}, {GQ_DFB, "D.FB"},
     {GQ_RMIX, "REVB"}, {GQ_VMIX, "DRIVE"}, {GQ_VAMT, "V.AMT"}, {GQ_AGATE, "GATE"}, {GQ_ARATCH, "RATCH"},
-    {GQ_ACHANCE, "CHNCE"}};
+    {GQ_ACHANCE, "CHNCE"}, {PQ_BAL, "BAL"}, {PQ_CUTS, "CUTS"}};
 #define NPERF (sizeof PERF / sizeof PERF[0])
-static const uint8_t PERF_DEF[4] = {0, 8, 24, 26};   /* MORPH, G.CUT, DELAY, REVB */
+static const uint8_t PERF_DEF[4] = {32, 33, 25, 24};   /* BAL, CUTS, D.FB, DELAY */
+/* BAL: GRAIN and ANLG as one, 0 the grains alone .. 64 both full .. 127 the analog alone */
+static int32_t bal_get(void)
+{
+    int32_t g = gp_p[GQ_GLEV], a = gp_p[GQ_ALEV];
+    if (g >= 127 && a >= 127) return 64;
+    if (g >= 127) return a / 2;
+    if (a >= 127) return 127 - g / 2;
+    return g + a ? a * 127 / (g + a) : 64;
+}
+static void bal_set(int32_t b)
+{
+    b = clamp(b, 0, 127);
+    gp_p[GQ_GLEV] = (int8_t)clamp((127 - b) * 2, 0, 127);
+    gp_p[GQ_ALEV] = (int8_t)clamp(b * 2, 0, 127);
+}
+static void perf_text(uint32_t i, char *s)      /* a performance knob's value: BAL as grains:analog, CUTS the mean */
+{
+    uint32_t q = PERF[i % NPERF].q;
+    if (q == PQ_BAL) {
+        uint32_t g = (uint32_t)(127 - bal_get()) * 100u / 127u;
+        char *p = s;
+        gq_put_dec(&p, g);
+        *p++ = ':';
+        gq_put_dec(&p, 100u - g);
+        *p = 0;
+    } else if (q == PQ_CUTS)
+        gq_text(GQ_CUT, (gp_p[GQ_CUT] + gp_p[GQ_ACUT]) / 2, s);
+    else
+        gq_text(q, gp_p[q], s);
+}
 static const char *const MIX_NAMES[4] = {"CHOR", "DELAY", "REVB", "DRIVE"};   /* (FX MIX: four MIX told apart) */
 enum { FN_EDIT, FN_SEL, FN_ENV, FN_LFO, FN_ARP, FN_FX, FN_MIX, FN_GLO, NFN };
 static const uint8_t FN_PAGE[NFN][2][5] = {    /* each function's pages: the grain layer's, the analog's; 0xFF ends */
@@ -157,7 +191,7 @@ static int32_t enc_fast(uint32_t k, int32_t e)
 #define C_DIMBAR RGB(45, 45, 45)
 #define C_KEYW RGB(210, 210, 210)
 #define KEY0 53u                                /* key 0 = F3 */
-#define KEY_REST 20u                            /* the top C# (C#5 at OCT 0): SEQ's rest while REC is on */
+#define KEY_REST 25u                            /* the top F# (F#5 at OCT 0): SEQ's rest while REC is on */
 #define WV_Y 70u                                /* the wave band: 240 x 64 */
 #define CELL_Y 142u                             /* the four values: 240 x 56 */
 #define SCOPE_Y 140u                            /* HOME: the oscilloscope, 240 x 64 */
@@ -181,37 +215,23 @@ static void wave_take(uint32_t pg)              /* SRC A: A, SRC B: B, else the 
         wv_hi[x] = (int8_t)(hi >> 8);
     }
 }
-/* the analog layer's oscillators as they sound (WAVE PW DETUN SUB NOISE), two periods over the band; 1: they changed */
-static int8_t wv_ana[240];
-static uint32_t ana_take(void)
+/* the analog layer's output (grain.c's ana_lo / ana_hi): the last half second, oldest left, scaled to its peak (at
+ * least 3000); behind: dim */
+static void draw_ana(uint32_t front)
 {
-    static uint32_t was = ~0u;
-    static int32_t s[240];
-    uint32_t key = (uint32_t)(uint8_t)gp_p[GQ_OWAVE] | (uint32_t)(uint8_t)gp_p[GQ_OPW] << 4
-                 | (uint32_t)(uint8_t)gp_p[GQ_OSUB] << 11 | (uint32_t)(uint8_t)gp_p[GQ_ONOISE] << 18
-                 | (uint32_t)(uint8_t)gp_p[GQ_ODET] << 25;
-    uint32_t inc = 0xFFFFFFFFu / 120u, pw = 214748365u + (uint32_t)clamp(gp_p[GQ_OPW], 0, 127) * 30436776u, x;
-    uint32_t dd = (uint32_t)mulq16((int32_t)inc, (uint32_t)(gp_p[GQ_ODET] * 9)), i1 = inc - dd, i2 = inc + dd;
-    uint32_t p1 = 0, p2 = 0, ps = 0;
-    int32_t owave = gp_p[GQ_OWAVE], osub = gp_p[GQ_OSUB] * 258, onoise = gp_p[GQ_ONOISE] * 258, rng = 0x1F123BB5, pk = 1;
-    if (key == was) return 0;
-    was = key;
-    for (x = 0; x < 240u; x++) {                /* (as grain.c's voice, the two oscillators started together) */
-        int32_t v;
-        if (owave == OW_SQR) v = osc_pulse(p1, i1, pw) + osc_pulse(p2, i2, pw);
-        else if (owave == OW_TRI) v = osc_tri(p1) + osc_tri(p2);
-        else v = osc_saw(p1, i1) + osc_saw(p2, i2);
-        v >>= 1;
-        if (osub) v += mulq15(ps < 0x80000000u ? 32767 : -32767, osub);
-        if (onoise) v += mulq15((int32_t)(noise32(&rng) >> 16) - 32768, onoise);
-        p1 += i1;
-        p2 += i2;
-        ps += i1 >> 1;
-        s[x] = v;
-        if ((v < 0 ? -v : v) > pk) pk = v < 0 ? -v : v;
+    uint32_t w = ana_w, x;
+    int32_t pk = 3000;
+    for (x = 0; x < 240u; x++) {
+        int32_t lo = ana_lo[x], hi = ana_hi[x];
+        if (-lo > pk) pk = -lo;
+        if (hi > pk) pk = hi;
     }
-    for (x = 0; x < 240u; x++) wv_ana[x] = (int8_t)(s[x] * 28 / pk);
-    return 1;
+    for (x = 0; x < 240u; x++) {
+        uint32_t i = (w + x) % 240u;            /* (w: the oldest column) */
+        int32_t y0 = 32 - ana_hi[i] * 30 / pk, y1 = 32 - ana_lo[i] * 30 / pk;
+        if (ana_hi[i] < ana_lo[i]) continue;    /* (not written yet) */
+        cv_rect((int32_t)x, y0, 1, y1 - y0 + 1, front ? C_ACC : C_ACC_DIM);
+    }
 }
 #define C_BACK RGB(50, 50, 50)                  /* the layer behind */
 /* the band: the layer of the pages (fg) in front, the other dim behind it; the grains: the material they read (A on
@@ -221,13 +241,10 @@ static void draw_wave(uint32_t pg, uint32_t fg)
     uint32_t x, k;
     uint16_t col = pg == 0u ? C_SRC_A : pg == 1u ? C_ACC : C_KEYW;
     cv_begin(240, 64, C_BLACK);
-    if (fg) {                                   /* the analog layer in front: its oscillators, the grains behind */
+    if (fg) {                                   /* the analog layer in front: its output, the grains behind */
         for (x = 0; x < 240u; x++)
             cv_rect((int32_t)x, 32 - (wv_hi[x] >> 2), 1, (wv_hi[x] >> 2) - (wv_lo[x] >> 2) + 1, C_BACK);
-        for (x = 1; x < 240u; x++) {
-            cv_line((int32_t)x - 1, 32 - wv_ana[x - 1u], (int32_t)x, 32 - wv_ana[x], C_ACC);
-            cv_line((int32_t)x - 1, 33 - wv_ana[x - 1u], (int32_t)x, 33 - wv_ana[x], C_ACC);
-        }
+        draw_ana(1);
         cv_blit(0, WV_Y);
         return;
     }
@@ -236,6 +253,7 @@ static void draw_wave(uint32_t pg, uint32_t fg)
         cv_rect(c - s / 2, 0, s, 64, C_DIMBAR);
         cv_rect(c, 0, 1, 64, C_WHITE);
     }
+    draw_ana(0);                                /* the analog layer behind, dim */
     for (x = 0; x < 240u; x++)
         cv_rect((int32_t)x, 32 - (wv_hi[x] >> 2), 1, (wv_hi[x] >> 2) - (wv_lo[x] >> 2) + 1, col);
     for (k = 0; k < GP_NG; k++) {               /* the grains sounding: a line where each reads, as tall as its window */
@@ -245,8 +263,6 @@ static void draw_wave(uint32_t pg, uint32_t fg)
             cv_rect((int32_t)(g.pos * 240u / GS_N), 32 - h, 1, 2 * h + 1, C_WHITE);
         }
     }
-    for (x = 1; x < 240u; x++)                  /* the analog layer behind, dim */
-        cv_line((int32_t)x - 1, 32 - wv_ana[x - 1u], (int32_t)x, 32 - wv_ana[x], C_ACC_DIM);
     cv_blit(0, WV_Y);
 }
 
@@ -269,10 +285,9 @@ static void draw_scope(const uint8_t *perf)
         y0 = y;
     }
     for (i = 0; i < 4u; i++) {
-        uint32_t q = PERF[perf[i] % NPERF].q;
         const char *name = PERF[perf[i] % NPERF].name;
         char v[12];
-        gq_text(q, gp_p[q], v);
+        perf_text(perf[i], v);
         cv_text((int32_t)i * 60 + (60 - text_w(&FONT_S, name)) / 2, 0, &FONT_S, name, C_OFF);
         cv_text((int32_t)i * 60 + (60 - text_w(&FONT_S, v)) / 2, 46, &FONT_S, v, C_WHITE);
     }
@@ -442,8 +457,8 @@ static void draw_seq_rows(uint32_t row, uint32_t play, uint32_t spage)   /* spag
         if (r == 1u) { cv_rect(0, y, 240, 20, C_DIMBAR); cv_rect(0, y, 3, 20, C_ACC); }
         if (!i) {
             cv_text(14, y + 1, &FONT_S, "PATTERN", r == 1u ? C_ACC : C_OFF);
-            if (spage) gq_put_str(&p, pat.arp ? "ARP ON" : "ARP OFF");
-            else { gq_put_dec(&p, len); gq_put_str(&p, " STEPS"); }
+            gq_put_dec(&p, len);
+            gq_put_str(&p, " STEPS");
             *p = 0;
             cv_text(234 - text_w(&FONT_S, s), y + 1, &FONT_S, s, col);
             continue;
@@ -465,7 +480,7 @@ static void draw_seq_rows(uint32_t row, uint32_t play, uint32_t spage)   /* spag
     }
     cv_blit(0, WV_Y);
 }
-/* the cells: PATTERN: TEMPO STEPS DIV SWING (page 2: ARP); a step: NOTE CHORD VEL GATE (page 2: RATCH CHANCE) */
+/* the cells: PATTERN: TEMPO STEPS DIV SWING (both pages); a step: NOTE CHORD VEL GATE (page 2: RATCH CHANCE) */
 static void draw_seq_cells(uint32_t row, uint32_t bpm, uint32_t spage)
 {
     static const char *const PN[4] = {"TEMPO", "STEPS", "DIV", "SWING"}, *const SN[4] = {"NOTE", "CHORD", "VEL", "GATE"};
@@ -476,10 +491,9 @@ static void draw_seq_cells(uint32_t row, uint32_t bpm, uint32_t spage)
         int32_t x0 = (int32_t)c * 60, w;
         char s[12], *p = s;
         const char *name = row ? SN[c] : PN[c];
-        if (spage) {                            /* page 2 */
-            if (c >= (row ? 2u : 1u)) continue;
-            if (!row) { name = "ARP"; gq_put_str(&p, pat.arp ? "ON" : "OFF"); w = pat.arp ? 48 : 0; }
-            else if (!c) { name = "RATCH"; *p++ = 'x'; gq_put_dec(&p, st->ratch); w = ((int32_t)st->ratch - 1) * 16; }
+        if (spage && row) {                     /* a step's page 2 */
+            if (c >= 2u) continue;
+            if (!c) { name = "RATCH"; *p++ = 'x'; gq_put_dec(&p, st->ratch); w = ((int32_t)st->ratch - 1) * 16; }
             else { name = "CHNCE"; gq_put_dec(&p, st->chance); *p++ = '%'; w = (int32_t)st->chance * 48 / 100; }
         } else if (!row) {
             if (c == 0u) { gq_put_dec(&p, bpm); w = ((int32_t)bpm - 40) * 48 / 200; }
@@ -522,7 +536,7 @@ static void draw_seq_lines(uint32_t row, uint32_t bpm, uint32_t play, uint32_t r
         gq_put_dec(&p, (uint32_t)clamp(pat.len, 1, SEQ_MAX));
     } else
         gq_put_str(&p, "PATTERN");
-    gq_put_str(&p, rec ? "  TOP C#: REST" : "  REC: RECORD");
+    gq_put_str(&p, rec ? "  TOP F#: REST" : "  REC: RECORD");
     *p = 0;
     draw_text_box(0, 222, 240, &FONT_S, s, C_OFF, 1);
 }
@@ -530,7 +544,7 @@ static void draw_seq_lines(uint32_t row, uint32_t bpm, uint32_t play, uint32_t r
 /* the knobs on a SEQ row: PATTERN's, a step's */
 static void seq_knob_pat(uint32_t k, int32_t e, uint32_t spage)
 {
-    if (spage) { if (!k) pat.arp = e > 0; return; }   /* ARP: the steps play the arpeggiator */
+    (void)spage;                                /* (PATTERN: the same on both pages) */
     if (k == 0u) pat.tempo = (uint8_t)clamp(pat.tempo + enc_fast(0, e), 40, 240);
     else if (k == 1u) pat.len = (uint8_t)clamp(pat.len + e, 1, SEQ_MAX);
     else if (k == 2u) pat.div = (uint8_t)clamp(pat.div + e, 0, NDIV - 1);
@@ -608,6 +622,17 @@ static void knob_turn(uint32_t q, uint32_t k, int32_t e)   /* a sound's value: a
     else
         v = gp_p[q] + enc_fast(k, e);
     gp_p[q] = (int8_t)(v < lo ? lo : v > hi ? hi : v);
+}
+static void perf_turn(uint32_t i, uint32_t k, int32_t e)   /* HOME's knob k, set to PERF[i] */
+{
+    uint32_t q = PERF[i % NPERF].q;
+    if (q == PQ_BAL) bal_set(bal_get() + enc_fast(k, e));
+    else if (q == PQ_CUTS) {                    /* both filters' cutoffs by the same step */
+        int32_t d = enc_fast(k, e);
+        gp_p[GQ_CUT] = (int8_t)clamp(gp_p[GQ_CUT] + d, 0, 127);
+        gp_p[GQ_ACUT] = (int8_t)clamp(gp_p[GQ_ACUT] + d, 0, 127);
+    } else
+        knob_turn(q, k, e);
 }
 
 /* ---- the settings as a journal in their sector: each save goes after the last one ([KLOG][length][crc32] then the
@@ -733,7 +758,7 @@ static void app_main(void)
                                                  * function FX goes back to, the page each function was left on */
     uint32_t t_dn[2] = {0, 0}, fired[2] = {1, 1};   /* ARP, FX: when pressed, a long press already done */
     uint32_t view = V_HOME, view_drawn = ~0u, t_home = 0, scope_t = 0, line_drawn = ~0u, seq_drawn = ~0u, seq_t = 0;
-    uint32_t srow = 1, spage = 0, rec = 0, wave_fg = ~0u, step_in = 0, pat_dirty = 0, arp_last = A_UP, beat_seen = 0, beat_t = 0;   /* srow: SEQ's row */
+    uint32_t srow = 1, spage = 0, rec = 0, wave_fg = ~0u, wave_ana = ~0u, wave_aq = 0, step_in = 0, pat_dirty = 0, arp_last = A_UP, beat_seen = 0, beat_t = 0;   /* srow: SEQ's row */
     uint8_t held[27][SEQ_CHORD] = {{0}};        /* the notes each key plays */
 #if BOARD_SMK37
     static const uint8_t WHITE[16] = {0, 2, 4, 6, 7, 9, 11, 12, 14, 16, 18, 19, 21, 23, 24, 26};   /* white key -> key */
@@ -775,6 +800,8 @@ static void app_main(void)
             ok = 1;
         }
         for (k = 0; k < 4u; k++) if (set.perf[k] >= NPERF) set.perf[k] = PERF_DEF[k];
+        if (set.perf[0] == 0u && set.perf[1] == 8u && set.perf[2] == 24u && set.perf[3] == 26u)
+            for (k = 0; k < 4u; k++) set.perf[k] = PERF_DEF[k];   /* (the first 0.9's defaults: today's) */
         if (!ok) set.fn = 0xFF;                 /* (nothing: the defaults below) */
     }
     if ((int8_t)set.oct < -2 || (int8_t)set.oct > 2 || set.ch > 16u || set.fn >= NFN
@@ -823,7 +850,7 @@ static void app_main(void)
 #endif
             if (down >> k & 1u) {
                 uint32_t note = base + k;
-                if (view == V_SEQ && rec && !saving && k == KEY_REST) {   /* REC: the top C# writes a rest */
+                if (view == V_SEQ && rec && !saving && k == KEY_REST) {   /* REC: the top F# writes a rest */
                     if (!step_in) {
                         uint32_t len = (uint32_t)clamp(pat.len, 1, SEQ_MAX);
                         if (!srow) srow = 1;
@@ -1013,7 +1040,7 @@ static void app_main(void)
                     if ((e = fm1_enc_take(ENC_KNOB1 + k)) != 0) {
                         uint32_t q = PAGES[pg].q[k];
                         if (view == V_HOME) {
-                            knob_turn(PERF[set.perf[k] % NPERF].q, k, e);
+                            perf_turn(set.perf[k], k, e);
                             set.mod = 1;
                             dirty = 1;
                             t_change = fm1_ms;
@@ -1111,8 +1138,7 @@ static void app_main(void)
                 sum = sum * 31u + s->note[0] + s->note[1] * 7u + s->note[2] * 13u + s->chord * 17u + s->vel * 19u + s->gate * 23u
                     + s->ratch * 29u + s->chance * 37u;
             }
-            sum = sum * 31u + len + (uint32_t)pat.div * 977u + (uint32_t)pat.swing * 7919u + bpm * 104729u + pat.arp * 3u
-                + spage * 1299709u;
+            sum = sum * 31u + len + (uint32_t)pat.div * 977u + (uint32_t)pat.swing * 7919u + bpm * 104729u + spage * 1299709u;
             if (sum != seq_drawn && fm1_ms - seq_t >= 30u) {
                 seq_drawn = sum;
                 seq_t = fm1_ms;
@@ -1150,8 +1176,13 @@ static void app_main(void)
             st = (uint32_t)gp_pos_view | (uint32_t)(uint8_t)gp_p[GQ_SPRD] << 16;
             if (wpg >= 2u && st != wave_pos) wave_pos = st, wave_live |= fm1_ms - wave_t >= 50u;
             if (live) wave_live |= fm1_ms - wave_t >= 50u;   /* the grains move: 20 frames a second */
-            if (ana_take() | (layer != wave_fg)) { wave_fg = layer; wave_live = 1; }   /* the analog layer's, the
-                                                 * layer in front */
+            if (layer != wave_fg) { wave_fg = layer; wave_live = 1; }   /* the layer in front */
+            if ((st = ana_w) != wave_ana) {     /* the analog layer's output: 20 frames a second while it sounds */
+                uint32_t quiet = 1;
+                for (k = 0; k < 240u && quiet; k++) quiet = !ana_hi[k] && !ana_lo[k];
+                if (!quiet || !wave_aq) wave_live |= fm1_ms - wave_t >= 50u;
+                if (fm1_ms - wave_t >= 50u) wave_ana = st, wave_aq = quiet;
+            }
             if (wave_live) { wave_live = 0; wave_t = fm1_ms; draw_wave(wpg, layer); }
         }
         idle_ok = 0;

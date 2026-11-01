@@ -32,9 +32,8 @@ static uint32_t chord_notes(uint32_t root, uint32_t chord, uint8_t *out)   /* ro
         if (root + (uint32_t)CHORDS[chord % NCHORD][i] <= 127u) out[n++] = (uint8_t)(root + (uint32_t)CHORDS[chord % NCHORD][i]);
     return n;
 }
-typedef struct { uint8_t len, div, swing, tempo; step_t st[SEQ_MAX]; uint8_t arp; } pattern_t;   /* swing
-                                                 * 50..75 %, tempo BPM; arp: the steps' notes go to the arpeggiator
-                                                 * (while it is on) */
+typedef struct { uint8_t len, div, swing, tempo; step_t st[SEQ_MAX]; uint8_t rsv; } pattern_t;   /* swing
+                                                 * 50..75 %, tempo BPM; rsv: (unused) */
 static pattern_t pat;                           /* the main loop edits, the audio side plays */
 
 static void step_clear(step_t *s)
@@ -54,7 +53,7 @@ static void pat_init(pattern_t *p)              /* a bar of sixteenths, empty, 1
     p->div = D_16;
     p->swing = 50;
     p->tempo = 120;
-    p->arp = 0;
+    p->rsv = 0;
     for (i = 0; i < SEQ_MAX; i++) step_clear(&p->st[i]);
 }
 
@@ -90,7 +89,7 @@ static void held_remove(uint32_t note)
 /* ---- the arpeggiator (OberVave's arp_step / arp_tick) */
 static struct { uint32_t cnt, period, pos, sounding, note, was_on, vel, play, rat, rk; } arp;   /* rat: the ratchet's
                                                  * hits in the step, rk: the last one played; play: CHANCE let it */
-static struct { uint8_t note[SEQ_CHORD], vel, n; } sa;   /* the sequencer's step, when it plays the arp (pat.arp) */
+static struct { uint8_t note[SEQ_CHORD], vel, n; } sa;   /* the sequencer's step, when it plays the arp (on) */
 static int32_t arp_rng = 0x6C8E9CF5;
 static int seq_phase(uint32_t *ph);
 static int seq_starting(void);
@@ -238,7 +237,7 @@ static void kayak_events(void)
 static struct { uint32_t cnt, dur, step, frac, gate_at, nsnd, play, tie, rat, rk, rlen, rgate; uint8_t snd[SEQ_CHORD]; } sr;
 /* rat: the ratchet's hits in the step, rk: the next one, rlen: a hit's length, rgate: its gate */
 static int32_t seq_rng = 0x2545F491;
-static uint32_t seq_arp(void) { return pat.arp && gp_p[GQ_AMODE] != A_OFF; }   /* the steps play the arp */
+static uint32_t seq_arp(void) { return gp_p[GQ_AMODE] != A_OFF; }   /* the arp on: the steps' notes play it */
 static uint32_t seq_was, seq_beat_cnt;
 
 static void seq_release(void)

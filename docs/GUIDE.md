@@ -15,7 +15,7 @@ Kayak is a custom firmware for the **M-VAVE FM-1** (and builds for the M-Vave SM
 - Each layer has its own **filter**, **ADSR envelope** and **LFO**.
 - The **effects** (chorus, delay, reverb, drive) work on the whole sound.
 - The **arpeggiator** (with HOLD, ratchet and chance), the **step sequencer** (64 steps, chords, ratchet, chance; it
-  can play the arp), **chords on one key** and **live transposition** all come from or build on
+  played through the arp when it is on), **chords on one key** and **live transposition** all come from or build on
   [OberVave](https://github.com/zvenson/obervave).
 - **HOME** shows both layers and the output, with four **performance knobs** you choose.
 - There are 12 factory presets and 16 user slots. Kayak plays USB-MIDI and TRS MIDI in, follows MIDI clock, and
@@ -58,7 +58,7 @@ Kayak is a fork of [Dinghy](https://github.com/zvenson/dinghy) (zvenson), the mi
    - 7.1 [The SEQ screen](#71-the-seq-screen)
    - 7.2 [PATTERN row](#72-pattern-row)
    - 7.3 [Step rows](#73-step-rows)
-   - 7.4 [Second page (SEQ+): ratchet, chance, arp](#74-second-page-seq-ratchet-chance-arp)
+   - 7.4 [Second page (SEQ+): ratchet, chance, arp](#74-second-page-seq-ratchet-chance)
    - 7.5 [Recording with the keys (REC)](#75-recording-with-the-keys-rec)
    - 7.6 [Playing, MIDI clock and transport](#76-playing-midi-clock-and-transport)
 8. [Presets and memory](#8-presets-and-memory)
@@ -148,9 +148,9 @@ How the screens are laid out:
 - Each page shows its name, a band with both layers' waves, and four cells (name, value, bar).
 - The band puts the **current layer in front** and the other one dim behind it:
   - GRAIN layer: the material the grains read (A on GRN SRC A, B on GRN SRC B, the mix elsewhere), POS and SPRD, and
-    every grain that sounds as a moving line; the analog oscillators as a dim orange line behind;
-  - ANALOG layer: two periods of the oscillators as they sound (WAVE, PW, DETUN, SUB, NOISE) in orange; the grains'
-    material dim grey behind.
+    every grain that sounds as a moving line; the analog layer's output dim orange behind;
+  - ANALOG layer: the analog layer's **output over the last half second**, after its filter and envelope (newest on
+    the right, scaled to its peak), in orange; the grains' material dim grey behind.
 - The bottom lines show the octave, the MIDI channel, the transposition, MIDI input activity and the MIDI clock.
 - The knobs speed up: a slow turn moves one step, a fast one up to eight steps per detent.
 - Values that are lists (waves, types, modes) wrap around.
@@ -267,8 +267,10 @@ part of the sound.
 | ANALOG layer | A.CUT, A.RES, A.DET, A.PW, A.SUB, A.ATK, A.REL, A.LFO (LFO depth), A.LEV (level) |
 | Effects | CHOR, DELAY, REVB, DRIVE (their MIX), D.FB (delay feedback), V.AMT (drive amount) |
 | Arpeggiator | GATE, RATCH, CHNCE |
+| Combined | BAL: the GRAIN and ANLG levels as one balance (left: the grains alone, middle: both full, right: the analog alone), shown as grains:analog (`50:50`); CUTS: both filters' cutoffs moved together, shown as their mean |
 
-The defaults are MORPH, G.CUT, DELAY and REVB.
+The defaults are BAL, CUTS, D.FB and DELAY: the balance of the two layers, both cutoffs, the delay's feedback and
+mix.
 
 ## 5. Effects (FX)
 
@@ -357,7 +359,8 @@ to the second page, ARP+.
 | ARP+ | RATCH | 1–4 | Ratchet: each step is cut into this many repeated hits of its note |
 | | CHNCE | 0–100 % | Chance: how likely each step is to sound (it still moves on when silent) |
 
-The arpeggiator also plays the sequencer's steps when PATTERN's ARP is on ([7.4](#74-second-page-seq-ratchet-chance-arp)).
+While the arpeggiator is on, it also plays the sequencer's steps: each step's note or chord is arpeggiated, as if
+its keys were held ([7.6](#76-playing-midi-clock-and-transport)).
 
 **Long press on ARP (½ s):** turns **HOLD** on or off, and ARP blinks while it is on.
 
@@ -402,7 +405,7 @@ Press **SEQ** to open the sequencer screen (SEQ lights). Press it again to switc
 - An orange mark shows the step being played.
 - The title shows `SEQ` or `SEQ+`, and `REC` in orange while recording.
 - The bottom lines show PLAY with the current step (or STOP), the tempo, the transposition, the selected row, and
-  what REC does (`REC: RECORD`, or `TOP C#: REST` while recording).
+  what REC does (`REC: RECORD`, or `TOP F#: REST` while recording).
 
 ### 7.2 PATTERN row
 
@@ -419,11 +422,12 @@ Press **SEQ** to open the sequencer screen (SEQ lights). Press it again to switc
 | VEL | Velocity, 1–127 |
 | GATE | Note length within the step. Past 99 % it becomes **TIE**: the notes hold into the next step. |
 
-### 7.4 Second page (SEQ+): ratchet, chance, arp
+### 7.4 Second page (SEQ+): ratchet, chance
+
+The PATTERN row shows the same values as on SEQ.
 
 | Row | Knob | Range | What it does |
 | --- | --- | --- | --- |
-| PATTERN | ARP | OFF, ON | ON: the steps' notes (a chord as well as a single note) play the **arpeggiator**, as if their keys were held, while the arp is on (ARP lit). The arp follows its own MODE, DIV, OCT and GATE during each step's gate. |
 | Step | RATCH | x1–x4 | Ratchet: the step is cut into this many repeated hits, each held for the step's GATE of its part |
 | Step | CHNCE | 0–100 % | Chance: how likely the step is to sound each time round |
 
@@ -437,7 +441,7 @@ While REC is on:
 - A key writes into the selected step and plays the note.
 - Keys held together make a chord of up to 4 notes. With a CHORD set on GLOBAL, one key writes that chord.
 - When all keys are released, the selection moves to the next row.
-- The **highest C#** of the keyboard (C#5 at octave 0, whatever the octave) writes a **rest** and moves on. It glows
+- The **highest F#** of the keyboard (F#5 at octave 0, whatever the octave) writes a **rest** and moves on. It glows
   dimly while REC is on.
 - The step keeps its gate, ratchet and chance when you write over it.
 
@@ -448,6 +452,8 @@ REC turns off when you leave the SEQ screen.
 - **PLAY** starts the sequence from the top, or stops it.
 - MIDI **START / CONTINUE / STOP** do the same.
 - An incoming **MIDI clock** (40–240 BPM) sets the tempo.
+- With the **arpeggiator on** (ARP lit), the steps play through it: each step's note or chord is arpeggiated (its
+  MODE, DIV, OCT, GATE, RATCH, CHNCE) for the length of the step's gate.
 - The pattern is saved to flash while the sequencer is stopped.
 
 ## 8. Presets and memory
@@ -503,7 +509,7 @@ Presets 1–8 are ChoralRoot's GRAIN sounds, with Kayak's filter, envelope, LFO 
 
 | Version | Changes |
 | --- | --- |
-| **0.9** | REC arms the sequencer's recording; the highest C# writes a rest. Ratchet and chance for the arp (ARP+) and the steps (SEQ+). The sequencer can play the arpeggiator (PATTERN › ARP). GRAIN pages named GRN. Both layers drawn, the current one in front. HOME: four performance knobs chosen on GLO › PERFORM, shown over the scope. User presets, settings and the sequence of 0.8 are kept. |
+| **0.9** | REC arms the sequencer's recording; the highest F# writes a rest. Ratchet and chance for the arp (ARP+) and the steps (SEQ+). With the arp on, the sequencer's steps play through it. GRAIN pages named GRN. Both layers drawn, the current one in front. HOME: four performance knobs chosen on GLO › PERFORM (by default the layers' balance, both cutoffs, the delay's feedback and mix), shown over the scope. ANA pages: the analog output over half a second. User presets, settings and the sequence of 0.8 are kept. |
 | **0.8** | Chords on one key (GLO › CHORD). Keys transpose the running sequence and the held arp. Sequencer redesigned as rows (PATTERN; per step NOTE, CHORD, VEL, GATE). Soft limiter on the output. |
 | **0.7** | Two layers per voice (GRAIN and ANALOG) chosen with ALGORITHM, each with its own filter, ADSR and LFO. Effects on the whole sound. HOLD (long press ARP). FX MIX (long press FX). SELECT moves through the pages of the current function. 4 new presets (SUB PAD, ANA BASS, POLY SAW, PLUCK ARP). |
 | **0.6** | Package identity `FM-1_987`, signed releases for the Firmware Hub. Larger UI font, new splash. No LED jump on page buttons (settings saved as a journal). |
