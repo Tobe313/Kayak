@@ -1,7 +1,7 @@
 # Kayak on the host: the splash, a chord, a source changed while it plays (a render and its swap), the pages turned,
 # the grain knobs moved, the effects' pages (FX) and their MIX knobs, a release, the LFO, a preset chosen and saved
 # into a user slot; then HOME (the wave and the scope), SEQ (three steps written: a note, a chord, a rest, a note),
-# PLAY, HOME while it plays, ARP on, PLAY again to stop. tests/run_host.sh tests/scripts/grain.txt
+# PLAY, HOME while it plays, ARP on, PLAY again to stop. (0.5: it starts on HOME; the bass's VOLUME up a little on\n# FX BASS; EDIT and SEL.) tests/run_host.sh tests/scripts/grain.txt
 700 shot
 1800 keys 0x4880
 2200 shot
@@ -17,11 +17,16 @@
 3500 enc 5 -127
 3600 enc 0 -1
 3700 enc 5 -127
+3740 enc 0 3
+3760 enc 2 3
 3800 shot
 3900 btn 2
 4000 keys 0
 4100 enc 0 4
 4200 enc 4 60
+4300 btn 6
+4350 shot
+4400 btn 3
 4500 shot
 5000 enc 6 2
 5200 shot

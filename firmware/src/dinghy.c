@@ -10,13 +10,16 @@
  *              ENV (ATK DEC SUS REL), LFO (RATE WAVE DEPTH DEST); ARP (MODE DIV OCTAVES GATE) by the ARP button only
  *   KNOB 1..4  the page's four values; the faster the turn, the bigger the step
  *   FX         the effects' pages and back (lit there): CHORUS (RATE DEPTH MIX), DELAY (TIME FEEDBK TONE MIX),
- *              REVERB (SIZE DAMP PRE MIX), DRIVE (TYPE AMOUNT TONE MIX): OberVave's
+ *              REVERB (SIZE DAMP PRE MIX), DRIVE (TYPE AMOUNT TONE MIX): OberVave's; BASS (VOLUME DETUNE OCTAVE): an
+ *              analog bass under the grains, two detuned saws through the filter and the effects
+ *   EDIT       SRC A, SRC B, GRAIN, GRAIN+ (where it was left; pressed again: the next of them)
+ *   SEL        FILTER, FILTER+ (the same way)
  *   ENV LFO    straight to their page
  *   ARP        the arpeggiator on (lit) or off, and its page
  *   SEQ        the step sequencer's screen (lit): the keys write the step under the cursor (a chord: keys held
  *              together) and move on, REC writes a rest, SELECT moves the cursor, KNOB 1..4 TEMPO LENGTH DIV SWING
  *   PLAY       the sequencer runs (lit, a blink a beat) or stops; MIDI START / STOP too, a MIDI clock sets the tempo
- *   HOME       a short press: the wave and an oscilloscope of the output; a knob or SELECT goes back to the pages
+ *   HOME       the screen after the splash; a short press: the wave and an oscilloscope of the output; a knob or SELECT goes back to the pages
  *   PRESETS    the sound: the 8 factory presets, then the user presets saved; MIDI program change too
  *   SAVE       save the sound: PRESETS picks the user slot (1..16), SAVE again writes it, HOME cancels
  *   ALGORITHM  the MIDI channel: OMNI (in: all, out: 1) or 1..16
@@ -45,8 +48,12 @@ static void app_audio(int32_t *out, uint32_t n)
 }
 
 /* ---- the pages: eight of the sound, then four of the effects (FX goes there and back), four knobs each */
-#define NPAGE 13u
+#define NPAGE 14u
 #define FX_PAGE0 9u
+#define PG_SRC_A 0u                             /* EDIT: SRC A, SRC B, GRAIN, GRAIN+ */
+#define PG_GRAIN2 3u
+#define PG_FILTER 4u                            /* SEL: FILTER, FILTER+ */
+#define PG_FILTER2 5u
 #define PG_ENV 6u
 #define PG_LFO 7u
 #define PG_ARP 8u                               /* (the last of the sound's: SELECT stops before it, ARP opens it) */
@@ -57,9 +64,10 @@ static const uint8_t PAGE_Q[NPAGE][4] = {      /* the knobs of each page */
     {GQ_FTYPE, GQ_CUT, GQ_RES, GQ_FDRIVE}, {GQ_KTRK, GQ_FMORPH, QX, QX}, {GQ_ATK, GQ_DEC, GQ_SUS, GQ_REL},
     {GQ_LRATE, GQ_LWAVE, GQ_LDEPTH, GQ_LDEST}, {GQ_AMODE, GQ_ADIV, GQ_AOCT, GQ_AGATE},
     {GQ_CRATE, GQ_CDEPTH, GQ_CMIX, QX}, {GQ_DTIME, GQ_DFB, GQ_DTONE, GQ_DMIX}, {GQ_RSIZE, GQ_RDAMP, GQ_RPRE, GQ_RMIX},
-    {GQ_VTYPE, GQ_VAMT, GQ_VTONE, GQ_VMIX}};
+    {GQ_VTYPE, GQ_VAMT, GQ_VTONE, GQ_VMIX}, {GQ_BVOL, GQ_BDET, GQ_BOCT, QX}};
 static const char *const PAGE_NAME[NPAGE] = {"SRC A", "SRC B", "GRAIN", "GRAIN+", "FILTER", "FILTER+", "ENV", "LFO", "ARP",
-                                             "FX CHORUS", "FX DELAY", "FX REVERB", "FX DRIVE"};
+                                             "FX CHORUS", "FX DELAY", "FX REVERB", "FX DRIVE", "FX BASS"};
+static const uint8_t OLD_N[2] = {GQ_N_V041, GQ_N_V04};   /* the values a sound had in 0.41, in 0.4: read again */
 enum { V_PAGES, V_HOME, V_SEQ };                /* what the screen shows */
 
 /* ---- the presets: the factory ones (grain.c), then NUSER the user saves (blob 0) */
@@ -410,7 +418,8 @@ static void app_main(void)
     uint32_t page_drawn = ~0u, cells_drawn = ~0u, wave_page = ~0u, wave_renders = ~0u, wave_morph = ~0u;
     uint32_t wave_t = 0, wave_live = 1, wave_pos = ~0u, saving = 0, save_to = 0, save_drawn = ~0u;
     uint32_t sound_pg = 0, fx_pg = FX_PAGE0;    /* the page left on either side of FX */
-    uint32_t view = V_PAGES, view_drawn = ~0u, t_home = 0, scope_t = 0, line_drawn = ~0u, seq_drawn = ~0u, seq_t = 0;
+    uint32_t edit_pg = PG_SRC_A, filt_pg = PG_FILTER;   /* the page left in either group */
+    uint32_t view = V_HOME, view_drawn = ~0u, t_home = 0, scope_t = 0, line_drawn = ~0u, seq_drawn = ~0u, seq_t = 0;
     uint32_t cursor = 0, step_in = 0, pat_dirty = 0, arp_last = A_UP, beat_seen = 0, beat_t = 0;
     uint8_t held[27] = {0};                     /* the note each key plays */
 #if BOARD_SMK37
@@ -419,27 +428,32 @@ static void app_main(void)
     smk_pw_t wheel = {0};
     smk_pad_events = 1;                         /* the pads as events (smk_pad_take): they play here, lit while they sound */
 #endif
-    if (blob_load(0, &user, sizeof user)) {     /* the user presets; 0.4's (GQ_N_V04 values a sound) read again */
-        static struct { uint8_t used[NUSER]; int8_t p[NUSER][GQ_N_V04]; } u04;
+    if (blob_load(0, &user, sizeof user)) {     /* the user presets; 0.41's and 0.4's (fewer values a sound) read again,
+                                                 * the values they did not have at their defaults */
+        static uint8_t raw[NUSER + NUSER * GQ_N];
+        uint32_t o, j;
         for (k = 0; k < NUSER; k++) user.used[k] = 0;
-        if (!blob_load(0, &u04, sizeof u04))
-            for (k = 0; k < NUSER; k++) {
-                uint32_t j;
-                user.used[k] = u04.used[k];
-                for (j = 0; j < GQ_N; j++) user.p[k][j] = j < GQ_N_V04 ? u04.p[k][j] : GQ[j].def;
+        for (o = 0; o < 2u; o++)
+            if (!blob_load(0, raw, NUSER + NUSER * (uint32_t)OLD_N[o])) {
+                for (k = 0; k < NUSER; k++) {
+                    user.used[k] = raw[k];
+                    for (j = 0; j < GQ_N; j++) user.p[k][j] = j < OLD_N[o] ? (int8_t)raw[NUSER + k * OLD_N[o] + j] : GQ[j].def;
+                }
+                break;
             }
     }
     if (blob_load(1, &pat, sizeof pat) || pat.len < 1u || pat.len > SEQ_MAX || pat.div >= NDIV)   /* the sequence */
         pat_init(&pat);
     k = !settings_load(&set, sizeof set);
-    if (!k) {                                   /* 0.4's settings: its sound again, the pages from the first */
-        static struct { uint8_t oct, ch, page, cur, mod; int8_t p[GQ_N_V04]; } s04;
-        if (!settings_load(&s04, sizeof s04)) {
-            uint32_t j;
-            set.oct = s04.oct, set.ch = s04.ch, set.page = 0, set.cur = s04.cur, set.mod = s04.mod;
-            for (j = 0; j < GQ_N; j++) set.p[j] = j < GQ_N_V04 ? s04.p[j] : GQ[j].def;
-            k = 1;
-        }
+    if (!k) {                                   /* 0.41's or 0.4's settings: their sound again (0.4: the pages from the first) */
+        static uint8_t raw[5u + GQ_N];
+        uint32_t o, j;
+        for (o = 0; o < 2u && !k; o++)
+            if (!settings_load(raw, 5u + OLD_N[o])) {
+                set.oct = raw[0], set.ch = raw[1], set.page = o ? 0u : raw[2], set.cur = raw[3], set.mod = raw[4];
+                for (j = 0; j < GQ_N; j++) set.p[j] = j < OLD_N[o] ? (int8_t)raw[5u + j] : GQ[j].def;
+                k = 1;
+            }
     }
     if (!k || (int8_t)set.oct < -2 || (int8_t)set.oct > 2 || set.ch > 16u
         || set.page >= NPAGE || !preset_ok(set.cur)) {
@@ -583,6 +597,14 @@ static void app_main(void)
                 dirty = 1;
                 t_change = fm1_ms;
             }
+            if (b & (1u << BTN_EDIT)) {         /* EDIT: the sources and the grains, where it was left; again: the next */
+                set.page = (uint8_t)(view == V_PAGES && pg <= PG_GRAIN2 ? (pg >= PG_GRAIN2 ? PG_SRC_A : pg + 1u) : edit_pg);
+                view = V_PAGES; dirty = 1; t_change = fm1_ms;
+            }
+            if (b & (1u << BTN_SEL)) {          /* SEL: the filter's two pages, the same way */
+                set.page = (uint8_t)(view == V_PAGES && (pg == PG_FILTER || pg == PG_FILTER2) ? (pg == PG_FILTER ? PG_FILTER2 : PG_FILTER) : filt_pg);
+                view = V_PAGES; dirty = 1; t_change = fm1_ms;
+            }
             if (b & (1u << BTN_ENV)) { view = V_PAGES; set.page = (uint8_t)PG_ENV; dirty = 1; t_change = fm1_ms; }
             if (b & (1u << BTN_LFO)) { view = V_PAGES; set.page = (uint8_t)PG_LFO; dirty = 1; t_change = fm1_ms; }
             if (b & (1u << BTN_FX)) {           /* FX: to the effects' pages and back, each where it was left */
@@ -658,6 +680,10 @@ static void app_main(void)
         led_fn(BTN_SAVE, saving);
         led_fn(BTN_HOME, view == V_HOME && !saving);
         led_fn(BTN_FX, view == V_PAGES && pg >= FX_PAGE0);
+        if (pg <= PG_GRAIN2) edit_pg = pg;      /* (where EDIT and SEL take back to) */
+        if (pg == PG_FILTER || pg == PG_FILTER2) filt_pg = pg;
+        led_fn(BTN_EDIT, view == V_PAGES && pg <= PG_GRAIN2);
+        led_fn(BTN_SEL, view == V_PAGES && (pg == PG_FILTER || pg == PG_FILTER2));
         led_fn(BTN_ENV, view == V_PAGES && pg == PG_ENV);
         led_fn(BTN_LFO, view == V_PAGES && pg == PG_LFO);
         led_fn(BTN_ARP, gp_p[GQ_AMODE] != A_OFF);

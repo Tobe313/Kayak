@@ -11,12 +11,14 @@ CHIRP SWEEP VOWEL METAL), TONE, MOTION, SEED. Up to 16 grains, shared by 8 voice
 | control | |
 | --- | --- |
 | SELECT | the page: **SRC A**, **SRC B** (TYPE TONE MOTION SEED), **GRAIN** (SIZE DENS POS SPRD), **GRAIN+** (MORPH RAND PITCH SCAN), **FILTER** (TYPE CUT RES DRIVE), **FILTER+** (KTRK SEM), **ENV** (ATK DEC SUS REL: an ADSR), **LFO** (RATE WAVE DEPTH DEST); the **ARP** page (MODE DIV OCTAVES GATE) opens with the ARP button only |
-| FX | the effects' pages and back (FX lit there): **CHORUS** (RATE DEPTH MIX), **DELAY** (TIME FEEDBK TONE MIX), **REVERB** (SIZE DAMP PRE MIX), **DRIVE** (TYPE AMOUNT TONE MIX); SELECT moves among them |
+| FX | the effects' pages and back (FX lit there): **CHORUS** (RATE DEPTH MIX), **DELAY** (TIME FEEDBK TONE MIX), **REVERB** (SIZE DAMP PRE MIX), **DRIVE** (TYPE AMOUNT TONE MIX), **BASS** (VOLUME DETUNE OCTAVE: an analog bass under the grains, two detuned saws through the filter, the envelope and the effects); SELECT moves among them |
+| EDIT | SRC A, SRC B, GRAIN, GRAIN+ (where it was left; pressed again: the next of them) |
+| SEL | FILTER, FILTER+ (the same way) |
 | ENV, LFO | straight to their page |
 | ARP | the arpeggiator on (lit, as it was last) or off, and its page: UP DOWN UP/DN RANDOM PLAYED, 1/4 .. 1/32T, 1..4 octaves |
 | SEQ | the step sequencer's screen (lit): one track of up to 64 steps. The keys write the step under the cursor (keys held together: a chord of up to 4) and move on, REC writes a rest, SELECT moves the cursor, KNOB 1..4: TEMPO (40..240 BPM), LENGTH, DIV, SWING |
 | PLAY | the sequencer from the top, or stop (lit while it runs, a blink a beat); MIDI START / STOP too, and a MIDI clock sets the tempo |
-| HOME | a short press: the wave the grains read and an oscilloscope of the output; a knob or SELECT goes back to the pages |
+| HOME | the screen Kayak starts on, after the splash; a short press: the wave the grains read and an oscilloscope of the output; a knob or SELECT goes back to the pages |
 | KNOB 1..4 | the page's four values, in their units (ms, grains a second, %, Hz, semitones); the faster the turn, the bigger the step (up to 8 a detent) |
 | PRESETS | the sound: 8 factory presets (ChoralRoot's CLOUD PAD, SHIMMER, BREATH PAD, FROZEN, STRUM, SWARM, ACID DUST, GLITCH), then the user presets; MIDI program change too |
 | SAVE | save the sound: PRESETS picks the user slot (1..16), SAVE again writes it, HOME cancels |

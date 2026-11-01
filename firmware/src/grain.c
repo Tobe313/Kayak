@@ -48,12 +48,14 @@ enum {
     GQ_VTYPE, GQ_VAMT, GQ_VTONE, GQ_VMIX,
     GQ_DEC, GQ_SUS,                              /* (0.41) the envelope's decay and sustain: after the rest, so the
                                                   * presets and settings of 0.4 (GQ_N_V04 values) read again */
+    GQ_BVOL, GQ_BDET, GQ_BOCT, GQ_BNONE,        /* (0.5) the analog bass under the grains: before the filter */
     GQ_N
 };
 #define GQ_N_V04 48u                            /* the values a sound had in 0.4 */
+#define GQ_N_V041 50u                           /* .. and in 0.41 */
 /* how a value reads on the screen (gq_text) */
 enum { GF_INT, GF_TYPE, GF_PCT, GF_SIGNED, GF_SEMI, GF_SIZE, GF_DENS, GF_CUT, GF_TIME, GF_LFOHZ, GF_LWAVE, GF_LDEST,
-       GF_FTYPE, GF_VTYPE, GF_DLYMS, GF_NONE, GF_ARP, GF_DIV };
+       GF_FTYPE, GF_VTYPE, GF_DLYMS, GF_NONE, GF_ARP, GF_DIV, GF_CENTS, GF_OCT };
 #define GL_NWAVE 5u
 static const char *const GL_WAVE_NAMES[GL_NWAVE] = {"SINE", "TRI", "SAW", "SQUARE", "S&H"};
 enum { GD_MORPH, GD_POS, GD_SIZE, GD_DENS, GD_SPRD, GD_PITCH, GD_CUT, GD_N };
@@ -82,6 +84,7 @@ static const gq_desc_t GQ[GQ_N] = {
     {"TYPE", 0, NDV - 1, DV_OVERDRIVE, GF_VTYPE}, {"AMOUNT", 0, 127, 60, GF_PCT}, {"TONE", 0, 127, 90, GF_PCT},
     {"MIX", 0, 127, 0, GF_PCT},
     {"DEC", 0, 127, 64, GF_TIME}, {"SUS", 0, 127, 127, GF_PCT},
+    {"VOLUME", 0, 127, 0, GF_PCT}, {"DETUNE", 0, 127, 40, GF_CENTS}, {"OCTAVE", -3, 1, -1, GF_OCT}, {0, 0, 0, 0, GF_NONE},
 };
 static volatile int8_t gp_p[GQ_N];
 static void gp_defaults(void)
@@ -170,6 +173,8 @@ static void gq_text(uint32_t q, int32_t v, char *s)
     case GF_NONE: break;
     case GF_ARP: gq_put_str(&p, ARP_NAMES[clamp(v, 0, NARPMODE - 1)]); break;
     case GF_DIV: gq_put_str(&p, DIV_NAMES[clamp(v, 0, NDIV - 1)]); break;
+    case GF_CENTS: gq_put_dec(&p, (uint32_t)(v * 30 + 63) / 127u); gq_put_str(&p, "ct"); break;   /* +-, the two saws apart */
+    case GF_OCT: if (v) *p++ = v < 0 ? '-' : '+'; gq_put_dec(&p, (uint32_t)(v < 0 ? -v : v)); gq_put_str(&p, " oct"); break;
     case GF_DLYMS: gq_put_dec(&p, gp_dly_ms(v)); gq_put_str(&p, "ms"); break;
     case GF_CUT:                                /* OberVave's: MIDI note v + 8, 13 Hz .. 19.9 kHz */
         u = (440u * pow2_q16((v - 61) * 16)) >> 16;
@@ -224,6 +229,7 @@ typedef struct {
     uint32_t age;
     uint8_t note;
     uint8_t dec;                 /* the envelope: 0 the attack, 1 the decay to the sustain */
+    uint32_t bph1, bph2;         /* the bass's two saws */
 } gp_voice_t;
 static gp_grain_t gpg[GP_NG];
 static gp_voice_t gpv[GP_NV];
@@ -396,6 +402,7 @@ static void gp_audio(int32_t *out, uint32_t n)
     const int16_t *A = gbuf[gsel[0]], *B = gbuf[gsel[1]];
     int32_t acc[CTL], mono[CTL], atk = gp_env_step(gp_p[GQ_ATK]), rel = gp_env_step(gp_p[GQ_REL]);
     int32_t dcy = gp_env_step(gp_p[GQ_DEC]), sus = gp_p[GQ_SUS] * 258;   /* the decay's step, the sustain level Q15 */
+    int32_t bvol = gp_p[GQ_BVOL], boct = gp_p[GQ_BOCT], bdet = gp_p[GQ_BDET] * 9;   /* the bass: level, octave, detune Q16 (up to 1.7 %: 30 ct a side) */
     int32_t scan = gp_scan_inc(gp_p[GQ_SCAN]), ft = gp_p[GQ_FTYPE], res = gp_p[GQ_RES], fm = gp_p[GQ_FMORPH];
     int32_t ldep = gp_p[GQ_LDEPTH], ldst = gp_p[GQ_LDEST], lwave = gp_p[GQ_LWAVE], d = gp_p[GQ_FDRIVE], drv, ktrk;
     uint32_t b, i, v, k, nact = 0, iv, share, linc = gl_hz100(gp_p[GQ_LRATE]) * 31166u;   /* a block's turn of the LFO:
@@ -480,6 +487,21 @@ static void gp_audio(int32_t *out, uint32_t n)
                 if (mine < share)
                     gp_spawn(v, iv, &e, A, B);
             }
+            if (bvol) {                                  /* the analog bass: two saws detuned apart, OCTAVE from the note */
+                uint32_t inc = pitch_inc((uint32_t)clamp((int32_t)V->note * 16 + boct * 192, 0, 2047)), b1 = V->bph1, b2 = V->bph2, i1, i2;
+                int32_t d;
+                inc = (inc >> 8) * (gp_bend_q16 >> 8);
+                d = mulq16((int32_t)inc, (uint32_t)bdet);
+                i1 = inc - (uint32_t)d;
+                i2 = inc + (uint32_t)d;
+                for (i = 0; i < m; i++) {
+                    acc[i] += ((osc_saw(b1, i1) + osc_saw(b2, i2)) * bvol) >> 8;
+                    b1 += i1;
+                    b2 += i2;
+                }
+                V->bph1 = b1;
+                V->bph2 = b2;
+            }
             /* OberVave's filter, a voice: CUT (+ the LFO) as MIDI note CUT + 8, round C4 by KTRK */
             vflt_set(&f, ft, (gp_p[GQ_CUT] + 8 + (ldst == GD_CUT ? lm : 0)) * 256 + ((int32_t)V->note - 60) * ktrk,
                      res, fm, drv);
@@ -523,6 +545,8 @@ static void gp_voice_on(uint32_t note, uint32_t vel)
         gp_kill(pick);
         memset(&gpv[pick].flt, 0, sizeof gpv[pick].flt);
         gpv[pick].morph = ((gp_p[GQ_MORPH] << 8) * 16513 + 8192) >> 14;
+        gpv[pick].bph1 = 0;
+        gpv[pick].bph2 = 0x40000000u;           /* (the second saw a quarter on: no doubled edge at the start) */
     }
     gpv[pick].note = (uint8_t)note;
     gpv[pick].age = ++gp_ages;
