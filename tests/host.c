@@ -153,7 +153,20 @@ typedef struct { uint32_t t, keys; int btn; uint8_t st, d1, d2; int8_t enc, encn
  * P hit at velocity V, V 0 = let go), "T fader F V" (0..127), "T wheel W RAW" (0 pitch, 1 mod; raw ADC 0..1023),
  * "T xkey K V" (keybed key K 0..36 at V, 0 = let go: the outer keys 0..4, 32..36); any build: "T shot" (the screen
  * at T -> OUT-T.ppm) */
-enum { HS_NONE, HS_VEL, HS_PAD, HS_FADER, HS_WHEEL, HS_XKEY, HS_SHOT };
+enum { HS_NONE, HS_VEL, HS_PAD, HS_FADER, HS_WHEEL, HS_XKEY, HS_SHOT, HS_SX };
+/* any build: "T sx HEX" (a SysEx frame from the computer: its bytes between F0 and F7, as hex) goes to the app's
+ * APP_SYSEX; what the app sends back is printed ("sysex out") */
+static uint8_t host_sx[512][640];
+static uint16_t host_sx_n[512];
+static uint32_t host_sx_count;
+static int host_sysex_out(const uint8_t *p, uint32_t n)
+{
+    uint32_t i;
+    printf("%6u ms  sysex out", fm1_ms);
+    for (i = 0; i < n; i++) printf(" %02X", p[i]);
+    printf("\n");
+    return 0;
+}
 static const host_ev_t SCRIPT0[] = {
     {200, 1u << 7, -1, 0, 0, 0, -1, 0},                         /* C4 */
     {700, 1u << 7 | 1u << 11 | 1u << 14, -1, 0, 0, 0, -1, 0},   /* + E4 G4: a chord */
@@ -172,7 +185,7 @@ static void read_script(const char *path)
 {
     static host_ev_t ev[65536];
     unsigned bpm = 0, nclk = 0;
-    char line[256], what[16];
+    char line[1500], what[16];   /* (an sx line: up to 1280 hex digits) */
     FILE *f = fopen(path, "r");
     uint32_t n = 0, i;
     if (!f) { perror(path); exit(1); }
@@ -193,6 +206,16 @@ static void read_script(const char *path)
         else if (!strcmp(what, "wheel")) { sscanf(line, "%*u %*s %u %u", &a, &b); e.smk = HS_WHEEL; e.sa = (uint8_t)a; e.sb = (uint16_t)b; }
         else if (!strcmp(what, "xkey")) { sscanf(line, "%*u %*s %u %u", &a, &b); e.smk = HS_XKEY; e.sa = (uint8_t)a; e.sb = (uint16_t)b; }
         else if (!strcmp(what, "shot")) e.smk = HS_SHOT;   /* (any board: the screen now -> OUT-<ms>.ppm) */
+        else if (!strcmp(what, "sx") && host_sx_count < 512u) {
+            char hex[1400];
+            uint32_t k = 0, v;
+            if (sscanf(line, "%*u %*s %1399s", hex) != 1) continue;
+            while (hex[2u * k] && hex[2u * k + 1u] && k < 640u && sscanf(hex + 2u * k, "%2x", &v) == 1)
+                host_sx[host_sx_count][k++] = (uint8_t)v;
+            host_sx_n[host_sx_count] = (uint16_t)k;
+            e.smk = HS_SX;
+            e.sb = (uint16_t)host_sx_count++;
+        }
         else if (!strcmp(what, "midi") || !strcmp(what, "trs")) {
             sscanf(line, "%*u %*s %i %u %u", (int *)&a, &b, &c);
             e.st = (uint8_t)a; e.d1 = (uint8_t)b; e.d2 = (uint8_t)c; e.src = what[0] == 't' ? 2 : 1;
@@ -294,6 +317,11 @@ static void platform_poll(void)                 /* one call = one millisecond */
     while (step < script_n && script[step].t <= fm1_ms) {
         if (script[step].smk == HS_SHOT) {
             write_ppm(fm1_ms);
+        } else if (script[step].smk == HS_SX) {
+#ifdef APP_SYSEX
+            if (!APP_SYSEX(host_sx[script[step].sb], host_sx_n[script[step].sb]))
+#endif
+                printf("%6u ms  sysex not taken\n", fm1_ms);
         } else if (script[step].smk) {
 #if BOARD_SMK37
             static uint32_t vel = 100;

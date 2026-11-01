@@ -39,7 +39,7 @@ int main(void)
     check("no protected sector passes the app's allow-list (erase, page)", leak_app == 0);
     check("no protected sector passes the loader's allow-list", leak_ldr == 0);
     check("the RAM driver's own net (FL_PROTECTED) covers every protected sector", leak_guard == 0);
-    check("the app may write 47 sectors: settings, 8 blobs, the owner tag, 5 of OTA, 8 slots of 4", allowed == 7u + NBLOB + NSLOT * SLOT_SECT);
+    check("the app may write 59 sectors: settings, 8 blobs, the owner tag, 5 of OTA, 4 slots of 9 (Kayak: a sample each)", allowed == 7u + NBLOB + NSLOT * SLOT_SECT);
     check("straddling ranges refused: 0xBF000+0x2000, 0x9C000+0x2000, 0xA5000+0x2000, 0x3000+0x2000",
           !FL_GUARD(0xBF000u, 0x2000u) && !FL_GUARD(0x9C000u, 0x2000u) && !FL_GUARD(0xA5000u, 0x2000u) &&
           !LDR_RANGE_OK(0xBF000u, 0x2000u) && !LDR_RANGE_OK(0x3000u, 0x2000u) && FL_PROTECTED(0xBF000u, 0x2000u));
@@ -59,7 +59,7 @@ int main(void)
           inside && distinct && SETTINGS_AT == 0x9D000u && BLOBS_AT == 0x9E000u && OWNER_AT == 0xAF000u);
     check("OTA staging 0xBB000-0xBFFFF writable, the window ends below BTIF",
           FL_GUARD(0xBB000u, 0x1000u) && FL_GUARD(0xBFF00u, 0x100u) && !FL_GUARD(0xC0000u, 0x100u) && FL_OTA_HI == 0xC0000u);
-    check("slots 0xC2000-0xE1FFF in FL_SMP, writable; the FM-1's places refused on the SMK: 0xFC000, 0xF4000-0xFBFFF",
+    check("slots 0xC2000-0xE5FFF in FL_SMP, writable; the FM-1's places refused on the SMK: 0xFC000, 0xF4000-0xFBFFF",
           FL_GUARD(SLOTS_AT, NSLOT * SLOT_SECT * 0x1000u) && SLOTS_AT == 0xC2000u &&
           !FL_GUARD(0xFC000u, 0x1000u) && !FL_GUARD(0xF4000u, 0x1000u) && !FL_GUARD(0xFB000u, 0x1000u));
     check("the calibration record 0xC1000 (trimdat at +0x224) never writable",

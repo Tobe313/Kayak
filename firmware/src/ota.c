@@ -164,6 +164,12 @@ static uint32_t ota_take(void)
     uint32_t n, d, s = 0, i;
     if (!ota_frame_get(&p, &n))
         return 0;
+#ifdef APP_SYSEX
+    if (APP_SYSEX(p, n)) {                      /* (Kayak) the app's own SysEx: its samples */
+        ota_frame_done();
+        return 0;
+    }
+#endif
     d = ota_unpack7(p, n, ota_dec, sizeof ota_dec);
     ota_frame_done();
     if (d < 7u || d > sizeof ota_dec || ota_dec[0] != 0 || ota_dec[1] != 0x59 || ota_rd24(ota_dec + 3) + 7u != d)

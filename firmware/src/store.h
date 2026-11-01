@@ -21,10 +21,10 @@
 #define STORE_MAGIC 0x4B41594Bu                 /* "KYAK": settings and blobs (slots: "SLOT") */
 #endif
 #define NBLOB 8u                                /* blobs: one 4 KiB sector each */
-#define NSLOT 8u                                /* slots: SLOT_SECT sectors each, for something bigger (samples, songs) */
-#define SLOT_SECT 4u
+#define SLOT_SECT 9u                            /* slots: SLOT_SECT sectors each (Kayak: a sample each, kayak_smp.h) */
 
 #if BOARD_SMK37
+#define NSLOT 4u                                /* (FL_SMP: 160 KiB) */
 #define SETTINGS_AT 0x0009D000u
 #define BLOBS_AT 0x0009E000u
 #define OWNER_AT 0x000AF000u                    /* (the kit's place for it) */
@@ -38,6 +38,7 @@
 #else
 #define SETTINGS_AT 0x000FC000u                 /* (Felucca's globals area) */
 #define BLOBS_AT 0x000F4000u
+#define NSLOT 8u                                /* (0x97000 .. 0xDEFFF) */
 #define SLOTS_AT 0x00097000u                    /* (Felucca's main store, FL_DATA) */
 #define FL_RANGE_OK(off, n) (FL_IN(off, n, FL_OTA_LO, FL_OTA_HI) || FL_IN(off, n, SETTINGS_AT, SETTINGS_AT + 0x1000u) || \
                              FL_IN(off, n, BLOBS_AT, BLOBS_AT + NBLOB * 0x1000u) || \

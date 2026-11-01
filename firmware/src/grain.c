@@ -77,9 +77,9 @@ static const char *const FTYPE_NAMES[NFTYPE] = {"LP12", "HP12", "BP12", "NOTCH",
 static const char *const VTYPE_NAMES[NDV] = {"OVER", "DIST", "FUZZ", "CRUSH"};
 typedef struct { const char *name; int8_t min, max, def; uint8_t fmt; } gq_desc_t;
 static const gq_desc_t GQ[GQ_N] = {
-    {"TYPE", 0, GS_NTYPE - 1, GT_DRONE, GF_TYPE}, {"TONE", 0, 127, 64, GF_INT}, {"MOVE", 0, 127, 64, GF_INT},
+    {"TYPE", 0, GS_NTYPE + NSLOT - 1, GT_DRONE, GF_TYPE}, {"TONE", 0, 127, 64, GF_INT}, {"MOVE", 0, 127, 64, GF_INT},
     {"SEED", 0, 127, 0, GF_INT},
-    {"TYPE", 0, GS_NTYPE - 1, GT_BELL, GF_TYPE}, {"TONE", 0, 127, 64, GF_INT}, {"MOVE", 0, 127, 64, GF_INT},
+    {"TYPE", 0, GS_NTYPE + NSLOT - 1, GT_BELL, GF_TYPE}, {"TONE", 0, 127, 64, GF_INT}, {"MOVE", 0, 127, 64, GF_INT},
     {"SEED", 0, 127, 0, GF_INT},
     {"SIZE", 0, 127, 92, GF_SIZE}, {"DENS", 0, 127, 88, GF_DENS}, {"POS", 0, 127, 50, GF_PCT}, {"SPRD", 0, 127, 40, GF_PCT},
     {"MORPH", 0, 127, 40, GF_PCT}, {"RAND", 0, 127, 14, GF_PCT}, {"PITCH", -24, 24, 0, GF_SEMI},
@@ -208,7 +208,10 @@ static void gq_text(uint32_t q, int32_t v, char *s)
     char *p = s;
     uint32_t u;
     switch (GQ[q].fmt) {
-    case GF_TYPE: gq_put_str(&p, GS_TYPE_NAMES[clamp(v, 0, GS_NTYPE - 1)]); break;
+    case GF_TYPE:                               /* the eight kinds, then the samples (kayak_smp.h) */
+        if (v >= GS_NTYPE) { gq_put_str(&p, "SMP"); gq_put_dec(&p, (uint32_t)(v - GS_NTYPE + 1)); }
+        else gq_put_str(&p, GS_TYPE_NAMES[clamp(v, 0, GS_NTYPE - 1)]);
+        break;
     case GF_LWAVE: gq_put_str(&p, GL_WAVE_NAMES[clamp(v, 0, GL_NWAVE - 1)]); break;
     case GF_LDEST: gq_put_str(&p, GL_DEST_NAMES[clamp(v, 0, GD_N - 1)]); break;
     case GF_ADEST: gq_put_str(&p, AD_NAMES[clamp(v, 0, AD_N - 1)]); break;
@@ -749,6 +752,7 @@ static struct {
     uint32_t renders;            /* renders landed (the screen redraws the wave) */
 } grs = {.cur = {{0xFF, 0xFF, 0xFF, 0xFF}, {0xFF, 0xFF, 0xFF, 0xFF}}};
 
+static int smp_fill(uint32_t slot, int16_t *dst, int32_t tone, int32_t move, int32_t seed, int32_t *root16);
 static int grain_poll(void)                       /* 1 = a render is under way */
 {
     uint32_t k, tgt;
@@ -765,6 +769,18 @@ static int grain_poll(void)                       /* 1 = a render is under way *
         k = changed[0] && changed[1] ? 1u - grs.last : changed[1];   /* both: the one not rendered last goes first */
         for (tgt = 0; tgt < 4u; tgt++)
             grs.cur[k][tgt] = (uint8_t)gp_p[(k ? GQ_TYPE_B : GQ_TYPE_A) + tgt];
+        if (grs.cur[k][0] >= GS_NTYPE) {        /* a sample (kayak_smp.h): read at once, no render */
+            int32_t root16 = GS_ROOT16;
+            tgt = 3u - gsel[0] - gsel[1];
+            if (smp_fill(grs.cur[k][0] - GS_NTYPE, gbuf[tgt], grs.cur[k][1], grs.cur[k][2], grs.cur[k][3], &root16))
+                grs.cur[k][0] = 0xFF;           /* (a transfer under way: again later) */
+            gs_finish(gbuf[tgt]);
+            if (!k) groot16 = root16;
+            gsel[k] = (uint8_t)tgt;
+            grs.last = (uint8_t)k;
+            grs.renders++;
+            return 1;
+        }
         gs_begin(&grs.g, grs.cur[k][0], grs.cur[k][1], grs.cur[k][2], grs.cur[k][3]);
         grs.which = (uint8_t)k;
         grs.busy = 1;

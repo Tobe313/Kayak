@@ -7,9 +7,10 @@
  *   keys       play the sound, 8 voices of two layers each: the grains and an analog synth; the notes go out over
  *              USB-MIDI too, on the MIDI channel
  *   ALGORITHM  the layer the sound's functions show: GRAIN (turned left) or ANALOG (turned right)
- *   EDIT       GRAIN: GRN SRC A, GRN SRC B (TYPE TONE MOVE SEED), GRN GRAIN (SIZE DENS POS SPRD), GRN GRAIN+ (MORPH
- *              RAND PITCH SCAN); ANALOG: ANA OSC (WAVE DETUN OCT PW), ANA OSC+ (SUB NOISE). The band shows the layer's
- *              picture in front, the other layer's dim behind it: the grains' material, the analog layer's
+ *   EDIT       GRAIN: GRN SRC A, GRN SRC B (TYPE TONE MOVE SEED; TYPE past METAL: SMP1 .., a sample loaded from
+ *              the web page docs/samples/: TONE under 64 darker, MOVE its start, SEED 64 and up backwards),
+ *              GRN GRAIN (SIZE DENS POS SPRD), GRN GRAIN+ (MORPH RAND PITCH SCAN); ANALOG: ANA OSC (WAVE DETUN
+ *              OCT PW), ANA OSC+ (SUB NOISE). The band shows the layer's picture in front, the other layer's dim behind it: the grains' material, the analog layer's
  *              output over half a second (after its filter and ADSR)
  *   SEL        the layer's filter (OberVave's): GRN FILT / ANA FILT (TYPE CUT RES DRIVE), + (KTRK SEM)
  *   ENV LFO    the layer's ADSR (ATK DEC SUS REL), its LFO (RATE WAVE DEPTH DEST)
@@ -48,13 +49,17 @@
  * Rules of the road (the chip has no FPU and no libgcc): integers only, no float, no 64-bit division.
  * tests/host.c runs this file on a computer: the screen as a PNG, the sound as a WAV.
  * What platform.c offers: docs/API.md. The chip's rules: docs/RULES.md. */
+#include <stdint.h>
 static void app_idle(void);
 #define LCD_IDLE app_idle                       /* while the screen's DMA runs: MIDI in (platform.c) */
+static int app_sysex(const uint8_t *p, uint32_t n);
+#define APP_SYSEX app_sysex                     /* a SysEx frame not the updater's: the samples (kayak_smp.h) */
 #include "platform.c"
 #if BOARD_SMK37
 #include "smk_wheel.h"
 #endif
 #include "grain.c"
+#include "kayak_smp.h"
 
 /* ---- the sound (runs in the audio ISR: keep it short, no flash, no screen) */
 static void app_audio(int32_t *out, uint32_t n)
@@ -1100,6 +1105,7 @@ static void app_main(void)
         }
 
         if (view != V_SEQ) rec = 0;             /* (REC: on SEQ's screen only) */
+        smp_poll();
         midi_in();
         if (clk_bpm && fm1_ms - clk_t0 > 2000u) clk_bpm = 0, clk_run = 0;   /* the clock has stopped coming */
         ctl_tempo_ext = clk_bpm >= 40u && clk_bpm <= 240u ? clk_bpm : 0u;   /* a MIDI clock sets the tempo */

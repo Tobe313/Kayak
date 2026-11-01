@@ -21,6 +21,22 @@ run() { echo "== $1"; shift; "$@" || fail=1; }
 run "FM-1 app on the host: the default script plays, screens and sound" sh tests/run_host.sh
 run "SMK-37 app on the host: the default script" env BOARD=smk37 sh tests/run_host.sh
 run "FM-1 MIDI: USB, the TRS jack, a clock, the channel" sh tests/run_host.sh tests/scripts/midi.txt
+run "FM-1 samples: INFO, a sample sent over SysEx into slot 1, SMP1 picked and played, ERASE" sh -c 'sh tests/run_host.sh tests/scripts/samples.txt > build/host/samples.log'
+run "FM-1 samples: every frame answered, the slot saved, the sample sounds" python3 - <<'PY'
+import array, sys, wave
+log = open("build/host/samples.log").read()
+acks = log.count("sysex out F0 7D 4B 59 7E 03")
+ok = ("slot 0 saved" in log and acks == 16 and "F0 7D 4B 59 7E 04 00 00 00 F7" in log
+      and "F0 7D 4B 59 7E 05 00 00 00 F7" in log and "sysex not taken" not in log)
+info = [l for l in log.splitlines() if "sysex out F0 7D 4B 59 01" in l]
+ok = ok and len(info) == 3 and " 01 00 20 00 3C 54 45 53 54 53 4D 50 00" in info[1]   # slot 1: 4096, C4, TESTSMP
+w = wave.open("build/host/kayak.wav")
+a = array.array("h", w.readframes(w.getnframes()))
+fs = w.getframerate()
+peak = max(abs(x) for x in a[2 * fs * 31 // 10:2 * fs * 43 // 10])   # 3.1 .. 4.3 s: SMP1 played
+print(f"samples: {acks} DATA answered, INFO x{len(info)}, peak {peak} while SMP1 plays")
+sys.exit(0 if ok and 1000 < peak < 32767 else 1)
+PY
 run "FM-1 GRAIN: a chord, a source rendered and swapped in while it plays, the pages, knobs and effects" sh tests/run_host.sh tests/scripts/grain.txt
 run "FM-1 GRAIN: the chord sounds, unclipped, and the release ends in silence" python3 - <<'PY'
 import array, sys, wave
