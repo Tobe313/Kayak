@@ -8,31 +8,36 @@ Kayak is a granular synth: the GRAIN engine of [ChoralRoot FM-1](https://github.
 Two sources, A and B, are rendered by a small synth from four knobs each (no samples): TYPE (PLUCK DRONE BELL BREATH
 CHIRP SWEEP VOWEL METAL), TONE, MOVE (the motion), SEED. Up to 16 grains, shared by 8 voices, read A and B mixed by MORPH.
 
+Each voice has two layers: the grains, and an analog synth (two detuned oscillators SAW, SQR (a pulse of PW) or TRI,
+a square an octave under, noise), each with its own filter, ADSR and LFO; the effects take the whole sound.
+
 | control | |
 | --- | --- |
-| SELECT | the page: **SRC A**, **SRC B** (TYPE TONE MOVE SEED), **GRAIN** (SIZE DENS POS SPRD), **GRAIN+** (MORPH RAND PITCH SCAN), **FILTER** (TYPE CUT RES DRIVE), **FILTER+** (KTRK SEM), **ENV** (ATK DEC SUS REL: an ADSR), **LFO** (RATE WAVE DEPTH DEST); the **ARP** page (MODE DIV OCT GATE) opens with the ARP button only |
-| FX | the effects' pages and back (FX lit there): **CHORUS** (RATE DEPTH MIX), **DELAY** (TIME FDBK TONE MIX), **REVERB** (SIZE DAMP PRE MIX), **DRIVE** (TYPE AMNT TONE MIX), **BASS** (LEVEL DETUN OCT: an analog bass under the grains, two detuned saws through the filter, the envelope and the effects); SELECT moves among them |
-| EDIT | SRC A, SRC B, GRAIN, GRAIN+ (where it was left; pressed again: the next of them) |
-| SEL | FILTER, FILTER+ (the same way) |
-| ENV, LFO | straight to their page |
-| ARP | the arpeggiator on (lit, as it was last) or off, and its page: UP DOWN UP/DN RANDOM PLAYED, 1/4 .. 1/32T, 1..4 octaves |
+| ALGORITHM | the layer the sound's functions show: **GRAIN** (turned left) or **ANALOG** (turned right) |
+| EDIT | GRAIN: **SRC A**, **SRC B** (TYPE TONE MOVE SEED), **GRAIN** (SIZE DENS POS SPRD), **GRAIN+** (MORPH RAND PITCH SCAN); ANALOG: **ANA OSC** (WAVE DETUN OCT PW), **ANA OSC+** (SUB NOISE) |
+| SEL | the layer's filter: **FILTER** (TYPE CUT RES DRIVE), **FILTER+** (KTRK SEM) |
+| ENV, LFO | the layer's ADSR (ATK DEC SUS REL), its LFO (RATE WAVE DEPTH DEST) |
+| GLO | **GLOBAL**: the two layers' levels (GRAIN, ANLG) and the MIDI channel (OMNI or 1..16) |
+| ARP | a short press: the arpeggiator on (lit, as it was last) or off, and its page (MODE DIV OCT GATE: UP DOWN UP/DN RANDOM PLAYED, 1/4 .. 1/32T, 1..4 octaves); held: **HOLD**, the notes stay after the keys are up until a new chord (ARP blinks) |
+| FX | a short press: the effects' pages and back: **CHORUS** (RATE DEPTH MIX), **DELAY** (TIME FDBK TONE MIX), **REVERB** (SIZE DAMP PRE MIX), **DRIVE** (TYPE AMNT TONE MIX); held: **FX MIX**, the four effects' MIX on the four knobs |
+| SELECT | the pages of the function its button opened (the button pressed again: the next one too) |
 | SEQ | the step sequencer's screen (lit): one track of up to 64 steps. The keys write the step under the cursor (keys held together: a chord of up to 4) and move on, REC writes a rest, SELECT moves the cursor, KNOB 1..4: TEMPO (40..240 BPM), LENGTH, DIV, SWING |
 | PLAY | the sequencer from the top, or stop (lit while it runs, a blink a beat); MIDI START / STOP too, and a MIDI clock sets the tempo |
-| HOME | the screen Kayak starts on, after the splash; a short press: the wave the grains read and an oscilloscope of the output; a knob or SELECT goes back to the pages |
+| HOME | the screen Kayak starts on, after the splash, a short press too: the layer, the wave the grains read and an oscilloscope of the output; a knob or SELECT goes back to the pages |
 | KNOB 1..4 | the page's four values, in their units (ms, grains a second, %, Hz, semitones); the faster the turn, the bigger the step (up to 8 a detent) |
-| PRESETS | the sound: 8 factory presets (ChoralRoot's CLOUD PAD, SHIMMER, BREATH PAD, FROZEN, STRUM, SWARM, ACID DUST, GLITCH), then the user presets; MIDI program change too |
+| PRESETS | the sound: 12 factory presets (ChoralRoot's CLOUD PAD, SHIMMER, BREATH PAD, FROZEN, STRUM, SWARM, ACID DUST, GLITCH; SUB PAD, ANA BASS, POLY SAW, PLUCK ARP with the analog layer), then the user presets; MIDI program change too |
 | SAVE | save the sound: PRESETS picks the user slot (1..16), SAVE again writes it, HOME cancels |
-| ALGORITHM | the MIDI channel (OMNI or 1..16) |
 | OCT- OCT+ | the octave |
 
 The filter and the effects are [OberVave](https://github.com/zvenson/obervave)'s (zvenson): its voice filter (an
 input stage driven into a tanh, then LP12 HP12 BP12 NOTCH and SEM (LP .. notch .. HP by the SEM knob) from a
 saturating SVF, or LP24 from a ladder; KTRK makes the cutoff follow the note), and its stereo chorus, ping-pong delay
 (20 .. 550 ms here), Dattorro plate reverb and parallel drive (OVER DIST FUZZ CRUSH).
-The LFO (SINE TRI SAW SQR S&H, 0.05 .. 20 Hz) moves one of MORPH POS SIZE DENS SPRD PITCH CUT.
+The LFOs (SINE TRI SAW SQR S&H, 0.05 .. 20 Hz): the grains' moves MORPH POS SIZE DENS SPRD PITCH or CUT, the
+analog layer's PITCH CUT LEVEL or PW.
 The arpeggiator and the step sequencer are OberVave's too, cut down to one sound and one track (`kayak_seq.h`); the arp
 follows the sequencer's grid while it runs. The buttons that do something glow, and light fully while it is on. The sound being
-played (marked `*` once changed), the octave, the channel and the page are kept in flash.
+played (marked `*` once changed), the octave, the channel, the function and the layer are kept in flash.
 
 The screen shows the material the grains read (A on SRC A, B on SRC B, the mix elsewhere, with POS and SPRD) and every
 grain sounding as a line moving across it. A source knob renders its buffer again in the main loop, a slice at a time,

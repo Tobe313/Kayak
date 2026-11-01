@@ -2,7 +2,8 @@
 # the grain knobs moved, the effects' pages (FX) and their MIX knobs, a release, the LFO, a preset chosen and saved
 # into a user slot; then HOME (the wave and the scope), SEQ (three steps written: a note, a chord, a rest, a note),
 # PLAY, HOME while it plays, ARP on, PLAY again to stop. (0.5: it starts on HOME; the bass's VOLUME up a little on
-# FX BASS; EDIT and SEL.) tests/run_host.sh tests/scripts/grain.txt
+# FX BASS; EDIT and SEL.) 0.7: ANA BASS, ALGORITHM to ANALOG, EDIT (ANA OSC), GLO (GLOBAL), FX held (FX MIX),
+# ARP held (HOLD), a note let go and still held, HOME. tests/run_host.sh tests/scripts/grain.txt
 700 shot
 1800 keys 0x4880
 2200 shot
@@ -54,4 +55,19 @@
 8200 btn 10
 8500 shot
 8600 btn 12
-9000 end
+8650 enc 6 -5
+8700 enc 1 1
+8800 btn 6
+8900 shot
+9000 btn 7
+9100 shot
+9200 btndown 2
+9800 btnup 2
+9900 shot
+10000 btndown 10
+10700 btnup 10
+10800 keys 0x80
+10900 keys 0
+11200 btn 8
+11500 shot
+12000 end

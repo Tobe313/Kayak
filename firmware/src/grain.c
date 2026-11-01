@@ -7,7 +7,8 @@
  * 1/sqrt(overlap) level, every grain reading A and B mixed by MORPH, SCAN), a low-pass SVF a voice. What goes: the
  * matrix, the LFOs, ENV 2, the filter's types and drive, the presets and the patch blob, the wave band's colours.
  * What changes: a render goes to a third buffer and swaps in when it is whole (no render in place, no declick), in
- * slices from the main loop (grain_poll); the amplitude envelope is the engine's own (ATK REL).
+ * slices from the main loop (grain_poll); the envelope and the LFO are Kayak's, the filter and the effects OberVave's.
+ * (0.7) A second layer a voice beside the grains: an analog synth with its own filter, ADSR and LFO.
  *
  *   the audio side (app_audio, the interrupt): gp_audio
  *   the main loop: gp_note_on / gp_note_off, grain_poll (one slice a call), gp_p[] the knobs (one writer: the loop) */
@@ -31,36 +32,42 @@ enum { D_4, D_8, D_8T, D_16, D_16T, D_32, D_32T, NDIV };
 static const char *const DIV_NAMES[NDIV] = {"1/4", "1/8", "1/8T", "1/16", "1/16T", "1/32", "1/32T"};
 static const uint8_t DIV_PER_QUARTER[NDIV] = {1, 2, 3, 4, 6, 8, 12};
 
-/* ---- the knobs: 48 values, twelve pages of four, eight of the sound and four of the effects (dinghy.c draws and
- * turns them) */
+/* ---- the knobs (dinghy.c lays them out on pages). Two layers a voice, ALGORITHM picks which one the pages show: the
+ * grains (their sources, the grain knobs, a filter, an ADSR, an LFO) and an analog synth (two detuned oscillators, a
+ * sub and noise, its own filter, ADSR and LFO); then the layers' levels, the arpeggiator and the effects, for the
+ * whole sound */
 enum {
-    GQ_TYPE_A, GQ_TONE_A, GQ_MOTION_A, GQ_SEED_A,
+    GQ_TYPE_A, GQ_TONE_A, GQ_MOTION_A, GQ_SEED_A,   /* (a source's four knobs together: grain_poll reads them so) */
     GQ_TYPE_B, GQ_TONE_B, GQ_MOTION_B, GQ_SEED_B,
     GQ_SIZE, GQ_DENS, GQ_POS, GQ_SPRD,
     GQ_MORPH, GQ_RAND, GQ_PITCH, GQ_SCAN,
-    GQ_FTYPE, GQ_CUT, GQ_RES, GQ_FDRIVE,         /* OberVave's filter */
-    GQ_KTRK, GQ_FMORPH, GQ_ATK, GQ_REL,
+    GQ_FTYPE, GQ_CUT, GQ_RES, GQ_FDRIVE, GQ_KTRK, GQ_FMORPH,   /* OberVave's filter */
+    GQ_ATK, GQ_DEC, GQ_SUS, GQ_REL,
     GQ_LRATE, GQ_LWAVE, GQ_LDEPTH, GQ_LDEST,
+    GQ_OWAVE, GQ_ODET, GQ_OOCT, GQ_OPW, GQ_OSUB, GQ_ONOISE,       /* the analog layer */
+    GQ_AFTYPE, GQ_ACUT, GQ_ARES, GQ_AFDRIVE, GQ_AKTRK, GQ_AFMORPH,
+    GQ_AATK, GQ_ADEC, GQ_ASUS, GQ_AREL,
+    GQ_ALRATE, GQ_ALWAVE, GQ_ALDEPTH, GQ_ALDEST,
+    GQ_GLEV, GQ_ALEV,                            /* the layers' levels */
     GQ_AMODE, GQ_ADIV, GQ_AOCT, GQ_AGATE,        /* OberVave's arpeggiator (kayak_seq.h) */
-    GQ_CRATE, GQ_CDEPTH, GQ_CMIX, GQ_CNONE,      /* OberVave's effects */
+    GQ_CRATE, GQ_CDEPTH, GQ_CMIX,                /* OberVave's effects */
     GQ_DTIME, GQ_DFB, GQ_DTONE, GQ_DMIX,
     GQ_RSIZE, GQ_RDAMP, GQ_RPRE, GQ_RMIX,
     GQ_VTYPE, GQ_VAMT, GQ_VTONE, GQ_VMIX,
-    GQ_DEC, GQ_SUS,                              /* (0.41) the envelope's decay and sustain: after the rest, so the
-                                                  * presets and settings of 0.4 (GQ_N_V04 values) read again */
-    GQ_BVOL, GQ_BDET, GQ_BOCT, GQ_BNONE,        /* (0.5) the analog bass under the grains: before the filter */
     GQ_N
 };
-#define GQ_N_V04 48u                            /* the values a sound had in 0.4 */
-#define GQ_N_V041 50u                           /* .. and in 0.41 */
 /* how a value reads on the screen (gq_text) */
 /* (labels and values of five characters at most: six of FONT_S fill a 60 px cell, they would touch the next) */
 enum { GF_INT, GF_TYPE, GF_PCT, GF_SIGNED, GF_SEMI, GF_SIZE, GF_DENS, GF_CUT, GF_TIME, GF_LFOHZ, GF_LWAVE, GF_LDEST,
-       GF_FTYPE, GF_VTYPE, GF_DLYMS, GF_NONE, GF_ARP, GF_DIV, GF_CENTS, GF_OCT };
+       GF_FTYPE, GF_VTYPE, GF_DLYMS, GF_ARP, GF_DIV, GF_CENTS, GF_OCT, GF_OWAVE, GF_ADEST };
 #define GL_NWAVE 5u
 static const char *const GL_WAVE_NAMES[GL_NWAVE] = {"SINE", "TRI", "SAW", "SQR", "S&H"};
 enum { GD_MORPH, GD_POS, GD_SIZE, GD_DENS, GD_SPRD, GD_PITCH, GD_CUT, GD_N };
 static const char *const GL_DEST_NAMES[GD_N] = {"MORPH", "POS", "SIZE", "DENS", "SPRD", "PITCH", "CUT"};
+enum { AD_PITCH, AD_CUT, AD_LEVEL, AD_PW, AD_N };   /* the analog LFO's destinations */
+static const char *const AD_NAMES[AD_N] = {"PITCH", "CUT", "LEVEL", "PW"};
+enum { OW_SAW, OW_SQR, OW_TRI, NOW };          /* the analog oscillators' wave (SQR: a pulse of PW) */
+static const char *const OW_NAMES[NOW] = {"SAW", "SQR", "TRI"};
 static const char *const FTYPE_NAMES[NFTYPE] = {"LP12", "HP12", "BP12", "NOTCH", "LP24", "SEM"};
 static const char *const VTYPE_NAMES[NDV] = {"OVER", "DIST", "FUZZ", "CRUSH"};
 typedef struct { const char *name; int8_t min, max, def; uint8_t fmt; } gq_desc_t;
@@ -73,19 +80,25 @@ static const gq_desc_t GQ[GQ_N] = {
     {"MORPH", 0, 127, 40, GF_PCT}, {"RAND", 0, 127, 14, GF_PCT}, {"PITCH", -24, 24, 0, GF_SEMI},
     {"SCAN", -64, 63, 12, GF_SIGNED},
     {"TYPE", 0, NFTYPE - 1, F_LP12, GF_FTYPE}, {"CUT", 0, 127, 100, GF_CUT}, {"RES", 0, 127, 20, GF_PCT},
-    {"DRIVE", 0, 127, 0, GF_PCT},
-    {"KTRK", 0, 127, 64, GF_PCT}, {"SEM", 0, 127, 64, GF_PCT}, {"ATK", 0, 127, 30, GF_TIME}, {"REL", 0, 127, 84, GF_TIME},
+    {"DRIVE", 0, 127, 0, GF_PCT}, {"KTRK", 0, 127, 64, GF_PCT}, {"SEM", 0, 127, 64, GF_PCT},
+    {"ATK", 0, 127, 30, GF_TIME}, {"DEC", 0, 127, 64, GF_TIME}, {"SUS", 0, 127, 127, GF_PCT}, {"REL", 0, 127, 84, GF_TIME},
     {"RATE", 0, 127, 40, GF_LFOHZ}, {"WAVE", 0, GL_NWAVE - 1, 0, GF_LWAVE}, {"DEPTH", 0, 127, 0, GF_PCT},
     {"DEST", 0, GD_N - 1, GD_MORPH, GF_LDEST},
+    {"WAVE", 0, NOW - 1, OW_SAW, GF_OWAVE}, {"DETUN", 0, 127, 40, GF_CENTS}, {"OCT", -3, 2, 0, GF_OCT},
+    {"PW", 0, 127, 64, GF_PCT}, {"SUB", 0, 127, 0, GF_PCT}, {"NOISE", 0, 127, 0, GF_PCT},
+    {"TYPE", 0, NFTYPE - 1, F_LP24, GF_FTYPE}, {"CUT", 0, 127, 70, GF_CUT}, {"RES", 0, 127, 30, GF_PCT},
+    {"DRIVE", 0, 127, 0, GF_PCT}, {"KTRK", 0, 127, 64, GF_PCT}, {"SEM", 0, 127, 64, GF_PCT},
+    {"ATK", 0, 127, 2, GF_TIME}, {"DEC", 0, 127, 60, GF_TIME}, {"SUS", 0, 127, 90, GF_PCT}, {"REL", 0, 127, 50, GF_TIME},
+    {"RATE", 0, 127, 50, GF_LFOHZ}, {"WAVE", 0, GL_NWAVE - 1, 1, GF_LWAVE}, {"DEPTH", 0, 127, 0, GF_PCT},
+    {"DEST", 0, AD_N - 1, AD_PITCH, GF_ADEST},
+    {"GRAIN", 0, 127, 127, GF_PCT}, {"ANLG", 0, 127, 0, GF_PCT},
     {"MODE", 0, NARPMODE - 1, A_OFF, GF_ARP}, {"DIV", 0, NDIV - 1, D_16, GF_DIV}, {"OCT", 1, 4, 1, GF_INT},
     {"GATE", 0, 127, 64, GF_PCT},
-    {"RATE", 0, 127, 30, GF_PCT}, {"DEPTH", 0, 127, 40, GF_PCT}, {"MIX", 0, 127, 0, GF_PCT}, {0, 0, 0, 0, GF_NONE},
+    {"RATE", 0, 127, 30, GF_PCT}, {"DEPTH", 0, 127, 40, GF_PCT}, {"MIX", 0, 127, 0, GF_PCT},
     {"TIME", 0, 127, 80, GF_DLYMS}, {"FDBK", 0, 127, 50, GF_PCT}, {"TONE", 0, 127, 70, GF_PCT}, {"MIX", 0, 127, 0, GF_PCT},
     {"SIZE", 0, 127, 100, GF_PCT}, {"DAMP", 0, 127, 75, GF_PCT}, {"PRE", 0, 127, 30, GF_PCT}, {"MIX", 0, 127, 0, GF_PCT},
     {"TYPE", 0, NDV - 1, DV_OVERDRIVE, GF_VTYPE}, {"AMNT", 0, 127, 60, GF_PCT}, {"TONE", 0, 127, 90, GF_PCT},
     {"MIX", 0, 127, 0, GF_PCT},
-    {"DEC", 0, 127, 64, GF_TIME}, {"SUS", 0, 127, 127, GF_PCT},
-    {"LEVEL", 0, 127, 0, GF_PCT}, {"DETUN", 0, 127, 40, GF_CENTS}, {"OCT", -3, 1, -1, GF_OCT}, {0, 0, 0, 0, GF_NONE},
 };
 static volatile int8_t gp_p[GQ_N];
 static void gp_defaults(void)
@@ -95,34 +108,68 @@ static void gp_defaults(void)
         gp_p[i] = GQ[i].def;
 }
 
-/* ---- the factory presets: ChoralRoot's eight GRAIN sounds (eng_grain.c GRAIN_PP: the sources, the grain knobs,
- * CUT RES), with an envelope and an LFO of Kayak's for each */
-#define GP_NFACT 8u
+/* ---- the factory presets: what each changes from the defaults above, knob and value pairs ending in -1.
+ * ChoralRoot's eight GRAIN sounds (eng_grain.c GRAIN_PP: the sources, the grain knobs, CUT RES) with Kayak's filter,
+ * envelope, LFO and effects, then four with the analog layer */
+#define GP_NFACT 12u
 static const char *const GP_FACT_NAMES[GP_NFACT] = {
-    "CLOUD PAD", "SHIMMER", "BREATH PAD", "FROZEN", "STRUM", "SWARM", "ACID DUST", "GLITCH"};
-static const int8_t GP_FACT[GP_NFACT][GQ_N] = {
-    /* A: TYPE TONE MOTION SEED | B | SIZE DENS POS SPRD | MORPH RAND PITCH SCAN | FILTER: TYPE CUT RES DRIVE |
-     * KTRK SEM ATK REL | LFO: RATE WAVE DEPTH DEST |
-     * ARP: MODE DIV OCTAVES GATE | CHORUS: RATE DEPTH MIX - | DELAY: TIME FB TONE MIX |
-     * REVERB: SIZE DAMP PRE MIX | DRIVE: TYPE AMOUNT TONE MIX | DEC SUS (0.41) |
-     * BASS: VOLUME DETUNE OCTAVE - (0.5) */
-    {GT_DRONE, 64, 64, 0, GT_BELL, 64, 64, 0, 92, 88, 50, 40, 40, 14, 0, 12, F_LP12, 100, 20, 0, 64, 64, 40, 90,
-     30, 0, 50, GD_MORPH, A_OFF, D_16, 1, 64, 30, 40, 40, 0, 90, 45, 50, 25, 110, 70, 40, 60, DV_OVERDRIVE, 40, 90, 0, 64, 127, 0, 40, -1, 0},
-    {GT_BELL, 64, 64, 0, GT_BELL, 104, 104, 11, 70, 100, 30, 30, 64, 24, 12, 8, F_LP12, 110, 10, 0, 64, 64, 30, 96,
-     45, 0, 70, GD_MORPH, A_OFF, D_16, 1, 64, 40, 50, 30, 0, 100, 55, 60, 35, 120, 60, 50, 70, DV_OVERDRIVE, 40, 90, 0, 64, 127, 0, 40, -1, 0},
-    {GT_BREATH, 64, 64, 0, GT_VOWEL, 64, 20, 3, 92, 88, 50, 40, 64, 10, 0, 12, F_SEM, 96, 30, 0, 64, 30, 50, 96,
-     25, 1, 40, GD_POS, A_OFF, D_16, 1, 64, 25, 60, 50, 0, 80, 40, 40, 0, 115, 80, 40, 55, DV_OVERDRIVE, 40, 90, 0, 64, 127, 0, 40, -1, 0},
-    {GT_VOWEL, 28, 20, 3, GT_BREATH, 28, 20, 3, 108, 72, 40, 0, 0, 10, 0, 5, F_LP24, 92, 10, 0, 64, 64, 60, 100,
-     20, 1, 30, GD_MORPH, A_OFF, D_16, 1, 64, 30, 40, 0, 0, 110, 60, 40, 20, 127, 50, 60, 75, DV_OVERDRIVE, 40, 90, 0, 64, 127, 0, 40, -1, 0},
-    {GT_PLUCK, 64, 100, 0, GT_METAL, 64, 64, 0, 60, 80, 20, 30, 0, 10, 0, 0, F_LP12, 110, 0, 0, 80, 64, 2, 70,
-     50, 2, 40, GD_MORPH, A_UP, D_16, 2, 50, 30, 40, 25, 0, 70, 50, 60, 40, 90, 70, 20, 30, DV_OVERDRIVE, 40, 90, 0, 60, 40, 0, 40, -1, 0},
-    {GT_CHIRP, 64, 64, 0, GT_SWEEP, 64, 64, 0, 48, 110, 50, 60, 64, 60, 0, 20, F_BP12, 120, 40, 20, 64, 64, 20, 80,
-     60, 4, 50, GD_CUT, A_OFF, D_16, 1, 64, 60, 70, 40, 0, 60, 60, 70, 40, 100, 70, 20, 35, DV_DIST, 50, 80, 20, 64, 127, 0, 40, -1, 0},
-    {GT_SWEEP, 104, 104, 11, GT_PLUCK, 104, 104, 11, 30, 118, 50, 80, 40, 40, 0, -24, F_LP24, 100, 70, 40, 90, 64, 5,
-     60, 70, 1, 70, GD_CUT, A_OFF, D_16, 1, 64, 30, 40, 0, 0, 75, 65, 50, 45, 80, 70, 20, 25, DV_DIST, 60, 70, 35, 50, 70, 0, 40, -1, 0},
-    {GT_METAL, 64, 64, 0, GT_DRONE, 64, 64, 0, 24, 112, 64, 100, 64, 90, 0, 0, F_HP12, 60, 30, 30, 64, 64, 2, 50,
-     80, 3, 60, GD_SIZE, A_OFF, D_16, 1, 64, 30, 40, 0, 0, 40, 70, 90, 40, 70, 60, 10, 25, DV_CRUSH, 70, 100, 50, 40, 80, 0, 40, -1, 0},
-};
+    "CLOUD PAD", "SHIMMER", "BREATH PAD", "FROZEN", "STRUM", "SWARM", "ACID DUST", "GLITCH",
+    "SUB PAD", "ANA BASS", "POLY SAW", "PLUCK ARP"};
+static const int8_t PF_CLOUD_PAD[] = {GQ_ATK, 40, GQ_REL, 90, GQ_LRATE, 30, GQ_LDEPTH, 50,
+    GQ_CMIX, 40, GQ_DTIME, 90, GQ_DFB, 45, GQ_DTONE, 50, GQ_DMIX, 25, GQ_RSIZE, 110, GQ_RDAMP, 70, GQ_RPRE, 40,
+    GQ_RMIX, 60, GQ_VAMT, 40, -1};
+static const int8_t PF_SHIMMER[] = {GQ_TYPE_A, GT_BELL, GQ_TYPE_B, GT_BELL, GQ_TONE_B, 104, GQ_MOTION_B, 104,
+    GQ_SEED_B, 11, GQ_SIZE, 70, GQ_DENS, 100, GQ_POS, 30, GQ_SPRD, 30, GQ_MORPH, 64, GQ_RAND, 24, GQ_PITCH, 12,
+    GQ_SCAN, 8, GQ_CUT, 110, GQ_RES, 10, GQ_REL, 96, GQ_LRATE, 45, GQ_LDEPTH, 70, GQ_CMIX, 30, GQ_CRATE, 40,
+    GQ_CDEPTH, 50, GQ_DTIME, 100, GQ_DFB, 55, GQ_DTONE, 60, GQ_DMIX, 35, GQ_RSIZE, 120, GQ_RDAMP, 60, GQ_RPRE, 50,
+    GQ_RMIX, 70, GQ_VAMT, 40, -1};
+static const int8_t PF_BREATH_PAD[] = {GQ_TYPE_A, GT_BREATH, GQ_TYPE_B, GT_VOWEL, GQ_MOTION_B, 20, GQ_SEED_B, 3,
+    GQ_MORPH, 64, GQ_RAND, 10, GQ_FTYPE, F_SEM, GQ_CUT, 96, GQ_RES, 30, GQ_FMORPH, 30, GQ_ATK, 50, GQ_REL, 96,
+    GQ_LRATE, 25, GQ_LWAVE, 1, GQ_LDEPTH, 40, GQ_LDEST, GD_POS, GQ_CRATE, 25, GQ_CDEPTH, 60, GQ_CMIX, 50,
+    GQ_DTIME, 80, GQ_DFB, 40, GQ_DTONE, 40, GQ_RSIZE, 115, GQ_RDAMP, 80, GQ_RPRE, 40, GQ_RMIX, 55, GQ_VAMT, 40, -1};
+static const int8_t PF_FROZEN[] = {GQ_TYPE_A, GT_VOWEL, GQ_TONE_A, 28, GQ_MOTION_A, 20, GQ_SEED_A, 3,
+    GQ_TYPE_B, GT_BREATH, GQ_TONE_B, 28, GQ_MOTION_B, 20, GQ_SEED_B, 3, GQ_SIZE, 108, GQ_DENS, 72, GQ_POS, 40,
+    GQ_SPRD, 0, GQ_MORPH, 0, GQ_RAND, 10, GQ_SCAN, 5, GQ_FTYPE, F_LP24, GQ_CUT, 92, GQ_RES, 10, GQ_ATK, 60,
+    GQ_REL, 100, GQ_LRATE, 20, GQ_LWAVE, 1, GQ_LDEPTH, 30, GQ_DTIME, 110, GQ_DFB, 60, GQ_DTONE, 40, GQ_DMIX, 20,
+    GQ_RSIZE, 127, GQ_RDAMP, 50, GQ_RPRE, 60, GQ_RMIX, 75, GQ_VAMT, 40, -1};
+static const int8_t PF_STRUM[] = {GQ_TYPE_A, GT_PLUCK, GQ_MOTION_A, 100, GQ_TYPE_B, GT_METAL, GQ_SIZE, 60,
+    GQ_DENS, 80, GQ_POS, 20, GQ_SPRD, 30, GQ_MORPH, 0, GQ_RAND, 10, GQ_SCAN, 0, GQ_CUT, 110, GQ_RES, 0,
+    GQ_KTRK, 80, GQ_ATK, 2, GQ_DEC, 60, GQ_SUS, 40, GQ_REL, 70, GQ_LRATE, 50, GQ_LWAVE, 2, GQ_LDEPTH, 40,
+    GQ_AMODE, A_UP, GQ_AOCT, 2, GQ_AGATE, 50, GQ_CMIX, 25, GQ_DTIME, 70, GQ_DTONE, 60, GQ_DMIX, 40, GQ_RSIZE, 90,
+    GQ_RDAMP, 70, GQ_RPRE, 20, GQ_RMIX, 30, GQ_VAMT, 40, -1};
+static const int8_t PF_SWARM[] = {GQ_TYPE_A, GT_CHIRP, GQ_TYPE_B, GT_SWEEP, GQ_SIZE, 48, GQ_DENS, 110,
+    GQ_SPRD, 60, GQ_MORPH, 64, GQ_RAND, 60, GQ_SCAN, 20, GQ_FTYPE, F_BP12, GQ_CUT, 120, GQ_RES, 40, GQ_FDRIVE, 20,
+    GQ_ATK, 20, GQ_REL, 80, GQ_LRATE, 60, GQ_LWAVE, 4, GQ_LDEPTH, 50, GQ_LDEST, GD_CUT, GQ_CRATE, 60, GQ_CDEPTH, 70,
+    GQ_CMIX, 40, GQ_DTIME, 60, GQ_DFB, 60, GQ_DMIX, 40, GQ_RSIZE, 100, GQ_RDAMP, 70, GQ_RPRE, 20, GQ_RMIX, 35,
+    GQ_VTYPE, DV_DIST, GQ_VAMT, 50, GQ_VTONE, 80, GQ_VMIX, 20, -1};
+static const int8_t PF_ACID_DUST[] = {GQ_TYPE_A, GT_SWEEP, GQ_TONE_A, 104, GQ_MOTION_A, 104, GQ_SEED_A, 11,
+    GQ_TYPE_B, GT_PLUCK, GQ_TONE_B, 104, GQ_MOTION_B, 104, GQ_SEED_B, 11, GQ_SIZE, 30, GQ_DENS, 118, GQ_SPRD, 80,
+    GQ_RAND, 40, GQ_SCAN, -24, GQ_FTYPE, F_LP24, GQ_RES, 70, GQ_FDRIVE, 40, GQ_KTRK, 90, GQ_ATK, 5, GQ_DEC, 50,
+    GQ_SUS, 70, GQ_REL, 60, GQ_LRATE, 70, GQ_LWAVE, 1, GQ_LDEPTH, 70, GQ_LDEST, GD_CUT, GQ_DTIME, 75, GQ_DFB, 65,
+    GQ_DTONE, 50, GQ_DMIX, 45, GQ_RSIZE, 80, GQ_RDAMP, 70, GQ_RPRE, 20, GQ_RMIX, 25, GQ_VTYPE, DV_DIST,
+    GQ_VTONE, 70, GQ_VMIX, 35, -1};
+static const int8_t PF_GLITCH[] = {GQ_TYPE_A, GT_METAL, GQ_TYPE_B, GT_DRONE, GQ_SIZE, 24, GQ_DENS, 112, GQ_POS, 64,
+    GQ_SPRD, 100, GQ_MORPH, 64, GQ_RAND, 90, GQ_SCAN, 0, GQ_FTYPE, F_HP12, GQ_CUT, 60, GQ_RES, 30, GQ_FDRIVE, 30,
+    GQ_ATK, 2, GQ_DEC, 40, GQ_SUS, 80, GQ_REL, 50, GQ_LRATE, 80, GQ_LWAVE, 3, GQ_LDEPTH, 60, GQ_LDEST, GD_SIZE,
+    GQ_DTIME, 40, GQ_DFB, 70, GQ_DTONE, 90, GQ_DMIX, 40, GQ_RSIZE, 70, GQ_RDAMP, 60, GQ_RPRE, 10, GQ_RMIX, 25,
+    GQ_VTYPE, DV_CRUSH, GQ_VAMT, 70, GQ_VTONE, 100, GQ_VMIX, 50, -1};
+static const int8_t PF_SUB_PAD[] = {GQ_ATK, 40, GQ_REL, 90, GQ_LRATE, 30, GQ_LDEPTH, 50,     /* CLOUD PAD over a square sub */
+    GQ_ALEV, 70, GQ_OWAVE, OW_SQR, GQ_ODET, 20, GQ_OOCT, -1, GQ_ACUT, 55, GQ_ARES, 15, GQ_AATK, 40, GQ_ADEC, 64,
+    GQ_ASUS, 127, GQ_AREL, 90, GQ_CMIX, 40, GQ_DTIME, 90, GQ_DFB, 45, GQ_DMIX, 20, GQ_RSIZE, 110, GQ_RDAMP, 70,
+    GQ_RPRE, 40, GQ_RMIX, 60, -1};
+static const int8_t PF_ANA_BASS[] = {GQ_GLEV, 0, GQ_ALEV, 110, GQ_OWAVE, OW_SAW, GQ_ODET, 25, GQ_OOCT, -1,   /* analog alone */
+    GQ_OSUB, 60, GQ_AFTYPE, F_LP24, GQ_ACUT, 45, GQ_ARES, 50, GQ_AFDRIVE, 30, GQ_AKTRK, 90, GQ_AATK, 1, GQ_ADEC, 50,
+    GQ_ASUS, 40, GQ_AREL, 30, -1};
+static const int8_t PF_POLY_SAW[] = {GQ_TYPE_A, GT_BELL, GQ_TYPE_B, GT_BELL, GQ_TONE_B, 104, GQ_MOTION_B, 104,
+    GQ_SEED_B, 11, GQ_MORPH, 64, GQ_PITCH, 12, GQ_GLEV, 50, GQ_ALEV, 90, GQ_OWAVE, OW_SAW, GQ_ODET, 70,
+    GQ_AFTYPE, F_LP12, GQ_ACUT, 85, GQ_ARES, 20, GQ_AATK, 20, GQ_ADEC, 70, GQ_ASUS, 100, GQ_AREL, 70,
+    GQ_ALRATE, 30, GQ_ALDEPTH, 20, GQ_ALDEST, AD_CUT, GQ_CMIX, 60, GQ_RSIZE, 105, GQ_RMIX, 50, -1};
+static const int8_t PF_PLUCK_ARP[] = {GQ_TYPE_A, GT_PLUCK, GQ_TYPE_B, GT_PLUCK, GQ_TONE_B, 104, GQ_MORPH, 30,
+    GQ_ATK, 2, GQ_DEC, 50, GQ_SUS, 30, GQ_REL, 40, GQ_GLEV, 40, GQ_ALEV, 100, GQ_OWAVE, OW_SQR, GQ_OPW, 40,
+    GQ_ACUT, 60, GQ_ARES, 45, GQ_AATK, 1, GQ_ADEC, 45, GQ_ASUS, 0, GQ_AREL, 30, GQ_AMODE, A_UP, GQ_AOCT, 2,
+    GQ_AGATE, 60, GQ_DTIME, 75, GQ_DFB, 55, GQ_DMIX, 45, GQ_RSIZE, 90, GQ_RMIX, 40, -1};
+static const int8_t *const GP_FACT[GP_NFACT] = {PF_CLOUD_PAD, PF_SHIMMER, PF_BREATH_PAD, PF_FROZEN, PF_STRUM, PF_SWARM,
+    PF_ACID_DUST, PF_GLITCH, PF_SUB_PAD, PF_ANA_BASS, PF_POLY_SAW, PF_PLUCK_ARP};
 
 /* 2^(i/192), Q16: pitch ratios in 1/16 semitones, d16 >= -3072 (eng_grain.c's) */
 static uint32_t pow2_q16(int32_t d16);
@@ -157,6 +204,8 @@ static void gq_text(uint32_t q, int32_t v, char *s)
     case GF_TYPE: gq_put_str(&p, GS_TYPE_NAMES[clamp(v, 0, GS_NTYPE - 1)]); break;
     case GF_LWAVE: gq_put_str(&p, GL_WAVE_NAMES[clamp(v, 0, GL_NWAVE - 1)]); break;
     case GF_LDEST: gq_put_str(&p, GL_DEST_NAMES[clamp(v, 0, GD_N - 1)]); break;
+    case GF_ADEST: gq_put_str(&p, AD_NAMES[clamp(v, 0, AD_N - 1)]); break;
+    case GF_OWAVE: gq_put_str(&p, OW_NAMES[clamp(v, 0, NOW - 1)]); break;
     case GF_PCT: gq_put_dec(&p, (uint32_t)(v * 100 + 63) / 127u); *p++ = '%'; break;
     case GF_SIGNED:
     case GF_SEMI:
@@ -172,10 +221,9 @@ static void gq_text(uint32_t q, int32_t v, char *s)
         break;
     case GF_FTYPE: gq_put_str(&p, FTYPE_NAMES[clamp(v, 0, NFTYPE - 1)]); break;
     case GF_VTYPE: gq_put_str(&p, VTYPE_NAMES[clamp(v, 0, NDV - 1)]); break;
-    case GF_NONE: break;
     case GF_ARP: gq_put_str(&p, ARP_NAMES[clamp(v, 0, NARPMODE - 1)]); break;
     case GF_DIV: gq_put_str(&p, DIV_NAMES[clamp(v, 0, NDIV - 1)]); break;
-    case GF_CENTS: gq_put_dec(&p, (uint32_t)(v * 30 + 63) / 127u); gq_put_str(&p, "ct"); break;   /* +-, the two saws apart */
+    case GF_CENTS: gq_put_dec(&p, (uint32_t)(v * 30 + 63) / 127u); gq_put_str(&p, "ct"); break;   /* +-, the two oscillators apart */
     case GF_OCT: if (v) *p++ = v < 0 ? '-' : '+'; gq_put_dec(&p, (uint32_t)(v < 0 ? -v : v)); gq_put_str(&p, "oct"); break;
     case GF_DLYMS: gq_put_dec(&p, gp_dly_ms(v)); gq_put_str(&p, "ms"); break;
     case GF_CUT:                                /* OberVave's: MIDI note v + 8, 13 Hz .. 19.9 kHz */
@@ -223,19 +271,23 @@ typedef struct {
 } gp_grain_t;
 typedef struct {
     int32_t gate;                /* 1 held */
-    int32_t env;                 /* the amplitude, Q15 */
+    int32_t env;                 /* the louder layer's level, Q15: the voice sounds while it is not 0 */
+    int32_t envg, enva;          /* the grains' and the analog layer's ADSR, Q15 */
+    uint8_t decg, deca;          /* .. 0 the attack, 1 the decay to the sustain */
+    uint8_t note;
     int32_t next;                /* samples to the next grain */
     int32_t morph;               /* MORPH as the last block played it, Q15 (ramped a fetch to this one's) */
-    vflt_state_t flt;            /* the filter (OberVave's) */
+    vflt_state_t flt, flta;      /* the grains' filter and the analog layer's (OberVave's) */
     int32_t lvl;                 /* the velocity, Q15 */
     uint32_t age;
-    uint8_t note;
-    uint8_t dec;                 /* the envelope: 0 the attack, 1 the decay to the sustain */
-    uint32_t bph1, bph2;         /* the bass's two saws */
+    uint32_t ph1, ph2, phs;      /* the analog oscillators, the sub */
+    int32_t nrng;                /* the analog noise */
 } gp_voice_t;
 static gp_grain_t gpg[GP_NG];
 static gp_voice_t gpv[GP_NV];
 static uint32_t gp_scan, gp_ages, gp_lph;         /* SCAN's phase, the voices' ages, the LFO's phase */
+static uint32_t gp_alph;                         /* the analog layer's LFO */
+static int32_t gp_alsh;
 static int32_t gp_lsh;                           /* the LFO's S&H value */
 static volatile int32_t gp_pos_view;             /* where the grains start (POS, SCAN, the LFO), Q8: the screen's */
 static int32_t gp_rng = 0x2545F491;
@@ -381,6 +433,34 @@ static int32_t gp_env_step(int32_t p)
     return (int32_t)(32767u * CTL / (n ? n : 1u)) + 1;
 }
 
+/* an LFO's value a block: SINE TRI SAW SQR S&H of phase ph (sh: the S&H's value), +-32767 */
+static int32_t gp_lfo(int32_t wave, uint32_t ph, int32_t sh)
+{
+    switch (wave) {
+    case 1: return osc_tri(ph);
+    case 2: return (int32_t)(ph >> 16) - 32768;
+    case 3: return ph < 0x80000000u ? 32767 : -32767;
+    case 4: return sh;
+    default: return sine_i(ph);
+    }
+}
+/* an ADSR a block: from *env to its next value (returned: the old one, *de its step a sample over m) */
+static int32_t gp_adsr(int32_t *env, uint8_t *dec, int32_t gate, int32_t atk, int32_t dcy, int32_t sus, int32_t rel,
+                       int32_t *de, uint32_t m)
+{
+    int32_t e0 = *env, e1;
+    if (!gate)                                  /* the release, from wherever it is */
+        e1 = e0 - rel < 0 ? 0 : e0 - rel;
+    else if (!*dec) {                           /* the attack, to full */
+        e1 = e0 + atk;
+        if (e1 >= 32767) { e1 = 32767; *dec = 1; }
+    } else                                      /* the decay, to the sustain (or up to it, SUS turned up) */
+        e1 = e0 > sus ? (e0 - dcy < sus ? sus : e0 - dcy) : (e0 + dcy > sus ? sus : e0 + dcy);
+    *env = e1;
+    *de = (e1 - e0) / (int32_t)m;
+    return e0;
+}
+
 static void gp_kill(uint32_t vi)                  /* the grains of voice vi go */
 {
     uint32_t i;
@@ -398,19 +478,26 @@ static void seq_tick(void);
 static int16_t scope[SCOPE_N];
 static volatile uint32_t scope_w;
 
-/* ---- the audio side: n stereo frames added to out */
+/* ---- the audio side: n stereo frames added to out. A voice is two layers: the grains (through their filter and
+ * ADSR) and the analog oscillators (through theirs), each at its LEVEL; the effects take the sum */
 static void gp_audio(int32_t *out, uint32_t n)
 {
     const int16_t *A = gbuf[gsel[0]], *B = gbuf[gsel[1]];
     int32_t acc[CTL], mono[CTL], atk = gp_env_step(gp_p[GQ_ATK]), rel = gp_env_step(gp_p[GQ_REL]);
     int32_t dcy = gp_env_step(gp_p[GQ_DEC]), sus = gp_p[GQ_SUS] * 258;   /* the decay's step, the sustain level Q15 */
-    int32_t bvol = gp_p[GQ_BVOL], boct = gp_p[GQ_BOCT], bdet = gp_p[GQ_BDET] * 9;   /* the bass: level, octave, detune Q16 (up to 1.7 %: 30 ct a side) */
+    int32_t aatk = gp_env_step(gp_p[GQ_AATK]), arel = gp_env_step(gp_p[GQ_AREL]), adcy = gp_env_step(gp_p[GQ_ADEC]);
+    int32_t asus = gp_p[GQ_ASUS] * 258, glev = gp_p[GQ_GLEV] * 258, alev = gp_p[GQ_ALEV] * 258;
     int32_t scan = gp_scan_inc(gp_p[GQ_SCAN]), ft = gp_p[GQ_FTYPE], res = gp_p[GQ_RES], fm = gp_p[GQ_FMORPH];
     int32_t ldep = gp_p[GQ_LDEPTH], ldst = gp_p[GQ_LDEST], lwave = gp_p[GQ_LWAVE], d = gp_p[GQ_FDRIVE], drv, ktrk;
+    int32_t aft = gp_p[GQ_AFTYPE], ares = gp_p[GQ_ARES], afm = gp_p[GQ_AFMORPH], adrv, aktrk = gp_p[GQ_AKTRK] * 2;
+    int32_t aldep = gp_p[GQ_ALDEPTH], aldst = gp_p[GQ_ALDEST], alwave = gp_p[GQ_ALWAVE];
+    int32_t owave = gp_p[GQ_OWAVE], odet = gp_p[GQ_ODET] * 9, ooct = gp_p[GQ_OOCT], osub = gp_p[GQ_OSUB] * 258;
+    int32_t onoise = gp_p[GQ_ONOISE] * 258;
     uint32_t b, i, v, k, nact = 0, iv, share, linc = gl_hz100(gp_p[GQ_LRATE]) * 31166u;   /* a block's turn of the LFO:
                                                   * 2^32 x 32 / (44100 x 100) a hundredth of a hertz */
+    uint32_t alinc = gl_hz100(gp_p[GQ_ALRATE]) * 31166u;
     gp_eff_t e;
-    vflt_t f;
+    vflt_t f, fa;
     static int32_t dry[256];                    /* the dry sound, mono: the effects' send */
     static uint8_t fx_ready;
     if (!fx_ready) {
@@ -420,30 +507,35 @@ static void gp_audio(int32_t *out, uint32_t n)
     if (n > 256u) n = 256u;                     /* (the platform's block: 256 frames) */
     kayak_events();                             /* the keys since the last call: to the arp or the voices */
     drv = 4096 + d * d * 15 * 4096 / 16129;     /* DRIVE into the filter: 1 .. 16 (OberVave's) */
+    d = gp_p[GQ_AFDRIVE];
+    adrv = 4096 + d * d * 15 * 4096 / 16129;
     ktrk = gp_p[GQ_KTRK] * 2;                   /* the cutoff follows the note: 127 = a semitone a semitone */
     e.rnd = gp_p[GQ_RAND];
     for (v = 0; v < GP_NV; v++)
         nact += gpv[v].gate || gpv[v].env;
     share = nact > 1u ? (GP_NG / nact > 2u ? GP_NG / nact : 2u) : GP_NG;
     for (b = 0; b < n; b += CTL) {
-        uint32_t m = n - b < CTL ? n - b : CTL, old = gp_lph;
-        int32_t lm = 0, lpit;
+        uint32_t m = n - b < CTL ? n - b : CTL, old = gp_lph, pw;
+        int32_t lm = 0, lpit, alm = 0, ax = 0, apit, amod = 32767;
         arp_tick();                             /* the arp, then the sequencer (OberVave's order): their notes this block */
         seq_tick();
-        gp_lph += linc;                         /* the LFO: one value a block, +-63 knob steps at full DEPTH */
+        gp_lph += linc;                         /* the grains' LFO: one value a block, +-63 knob steps at full DEPTH */
         if (gp_lph < old)
             gp_lsh = (int32_t)(noise32(&gp_rng) >> 17) * 2 - 32767;
-        if (ldep) {
-            int32_t x;
-            switch (lwave) {
-            case 1: x = osc_tri(gp_lph); break;
-            case 2: x = (int32_t)(gp_lph >> 16) - 32768; break;
-            case 3: x = gp_lph < 0x80000000u ? 32767 : -32767; break;
-            case 4: x = gp_lsh; break;
-            default: x = sine_i(gp_lph); break;
-            }
-            lm = (x * ldep) >> 16;
+        if (ldep)
+            lm = (gp_lfo(lwave, gp_lph, gp_lsh) * ldep) >> 16;
+        old = gp_alph;                          /* the analog layer's LFO */
+        gp_alph += alinc;
+        if (gp_alph < old)
+            gp_alsh = (int32_t)(noise32(&gp_rng) >> 17) * 2 - 32767;
+        if (aldep) {
+            ax = gp_lfo(alwave, gp_alph, gp_alsh);
+            alm = (ax * aldep) >> 16;
+            if (aldst == AD_LEVEL)              /* a tremolo: down from full, DEPTH 127 to nearly nothing */
+                amod = 32767 - ((32767 - ax) * aldep >> 8);
         }
+        apit = aldst == AD_PITCH ? alm * 3 : 0; /* +-12 st */
+        pw = 214748365u + (uint32_t)clamp(gp_p[GQ_OPW] + (aldst == AD_PW ? alm : 0), 0, 127) * 30436776u;   /* 5 .. 95 % */
         e.size = clamp(gp_p[GQ_SIZE] + (ldst == GD_SIZE ? lm : 0), 0, 127);
         e.dens = clamp(gp_p[GQ_DENS] + (ldst == GD_DENS ? lm : 0), 0, 127);
         e.sprd = clamp(gp_p[GQ_SPRD] + (ldst == GD_SPRD ? lm : 0), 0, 127);
@@ -458,62 +550,78 @@ static void gp_audio(int32_t *out, uint32_t n)
             mono[i] = 0;
         for (v = 0; v < GP_NV; v++) {
             gp_voice_t *V = &gpv[v];
-            int32_t e0 = V->env, e1, de, m0;
-            uint32_t mine = 0;
+            int32_t e0, de;
             if (!V->gate && !V->env)
                 continue;
-            if (!V->gate)                                /* ADSR: the release, from wherever it is */
-                e1 = e0 - rel < 0 ? 0 : e0 - rel;
-            else if (!V->dec) {                          /* the attack, to full */
-                e1 = e0 + atk;
-                if (e1 >= 32767) { e1 = 32767; V->dec = 1; }
-            } else                                       /* the decay, to the sustain (or up to it, SUS turned up) */
-                e1 = e0 > sus ? (e0 - dcy < sus ? sus : e0 - dcy) : (e0 + dcy > sus ? sus : e0 + dcy);
-            V->env = e1;
-            de = (e1 - e0) / (int32_t)m;
-            m0 = V->morph;
-            V->morph = e.morph;
-            e.pitch16 = (int32_t)V->note * 16 + gp_p[GQ_PITCH] * 16 + lpit;
-            for (i = 0; i < m; i++)
-                acc[i] = 0;
-            for (k = 0; k < GP_NG; k++)
-                if (gpg[k].owner == v + 1u)
-                    mine += (uint32_t)gp_run(&gpg[k], acc, m, m0, e.morph, A, B);
-            V->next -= (int32_t)m;
-            if (V->next <= 0) {                          /* (in the release too: the cloud fades with the envelope) */
-                uint32_t r = noise32(&gp_rng);
-                int32_t j = (((int32_t)(r & 0xFFFFu) - 32768) * e.sprd) / 254;   /* +-SPRD / 2, Q15 */
-                V->next += (int32_t)iv + mulq15((int32_t)iv, j);
-                if (V->next < 0)
-                    V->next = 0;
-                if (mine < share)
-                    gp_spawn(v, iv, &e, A, B);
-            }
-            if (bvol) {                                  /* the analog bass: two saws detuned apart, OCTAVE from the note */
-                uint32_t inc = pitch_inc((uint32_t)clamp((int32_t)V->note * 16 + boct * 192, 0, 2047)), b1 = V->bph1, b2 = V->bph2, i1, i2;
-                int32_t d;
-                inc = (inc >> 8) * (gp_bend_q16 >> 8);
-                d = mulq16((int32_t)inc, (uint32_t)bdet);
-                i1 = inc - (uint32_t)d;
-                i2 = inc + (uint32_t)d;
-                for (i = 0; i < m; i++) {
-                    acc[i] += ((osc_saw(b1, i1) + osc_saw(b2, i2)) * bvol) >> 8;
-                    b1 += i1;
-                    b2 += i2;
+            /* the grains: their ADSR, the cloud, their filter */
+            e0 = gp_adsr(&V->envg, &V->decg, V->gate, atk, dcy, sus, rel, &de, m);
+            if (glev && (V->gate || V->envg || e0)) {
+                int32_t m0 = V->morph;
+                uint32_t mine = 0;
+                V->morph = e.morph;
+                e.pitch16 = (int32_t)V->note * 16 + gp_p[GQ_PITCH] * 16 + lpit;
+                for (i = 0; i < m; i++)
+                    acc[i] = 0;
+                for (k = 0; k < GP_NG; k++)
+                    if (gpg[k].owner == v + 1u)
+                        mine += (uint32_t)gp_run(&gpg[k], acc, m, m0, e.morph, A, B);
+                V->next -= (int32_t)m;
+                if (V->next <= 0) {                      /* (in the release too: the cloud fades with the envelope) */
+                    uint32_t r = noise32(&gp_rng);
+                    int32_t j = (((int32_t)(r & 0xFFFFu) - 32768) * e.sprd) / 254;   /* +-SPRD / 2, Q15 */
+                    V->next += (int32_t)iv + mulq15((int32_t)iv, j);
+                    if (V->next < 0)
+                        V->next = 0;
+                    if (mine < share)
+                        gp_spawn(v, iv, &e, A, B);
                 }
-                V->bph1 = b1;
-                V->bph2 = b2;
+                /* OberVave's filter, a voice: CUT (+ the LFO) as MIDI note CUT + 8, round C4 by KTRK */
+                vflt_set(&f, ft, (gp_p[GQ_CUT] + 8 + (ldst == GD_CUT ? lm : 0)) * 256 + ((int32_t)V->note - 60) * ktrk,
+                         res, fm, drv);
+                {
+                    int32_t g = mulq15(V->lvl, glev);
+                    for (i = 0; i < m; i++) {
+                        int32_t y = vflt_step(&f, &V->flt, clamp(acc[i], -65535, 65535));
+                        mono[i] += mulq15(mulq15(clamp(y, -32767, 32767), e0), g);
+                        e0 += de;
+                    }
+                }
             }
-            /* OberVave's filter, a voice: CUT (+ the LFO) as MIDI note CUT + 8, round C4 by KTRK */
-            vflt_set(&f, ft, (gp_p[GQ_CUT] + 8 + (ldst == GD_CUT ? lm : 0)) * 256 + ((int32_t)V->note - 60) * ktrk,
-                     res, fm, drv);
-            for (i = 0; i < m; i++) {
-                int32_t y = vflt_step(&f, &V->flt, clamp(acc[i], -65535, 65535));
-                mono[i] += mulq15(mulq15(clamp(y, -32767, 32767), e0), V->lvl);
-                e0 += de;
-            }
-            if (!V->gate && !V->env)                     /* the release ended */
+            if (!V->gate && !V->envg)                    /* the grains' release ended */
                 gp_kill(v);
+            /* the analog layer: two oscillators detuned apart, OCT from the note, a square an octave under, noise;
+             * its own filter and ADSR */
+            e0 = gp_adsr(&V->enva, &V->deca, V->gate, aatk, adcy, asus, arel, &de, m);
+            if (alev && (V->gate || V->enva || e0)) {
+                uint32_t inc = pitch_inc((uint32_t)clamp((int32_t)V->note * 16 + ooct * 192 + apit, 0, 2047));
+                uint32_t p1 = V->ph1, p2 = V->ph2, ps = V->phs, i1, i2;
+                int32_t dd, g = mulq15(mulq15(V->lvl, alev), amod);
+                inc = (inc >> 8) * (gp_bend_q16 >> 8);
+                dd = mulq16((int32_t)inc, (uint32_t)odet);
+                i1 = inc - (uint32_t)dd;
+                i2 = inc + (uint32_t)dd;
+                vflt_set(&fa, aft, (gp_p[GQ_ACUT] + 8 + (aldst == AD_CUT ? alm : 0)) * 256 + ((int32_t)V->note - 60) * aktrk,
+                         ares, afm, adrv);
+                for (i = 0; i < m; i++) {
+                    int32_t s, y;
+                    if (owave == OW_SQR) s = osc_pulse(p1, i1, pw) + osc_pulse(p2, i2, pw);
+                    else if (owave == OW_TRI) s = osc_tri(p1) + osc_tri(p2);
+                    else s = osc_saw(p1, i1) + osc_saw(p2, i2);
+                    s >>= 1;
+                    if (osub) s += mulq15(ps < 0x80000000u ? 32767 : -32767, osub);
+                    if (onoise) s += mulq15((int32_t)(noise32(&V->nrng) >> 16) - 32768, onoise);
+                    p1 += i1;
+                    p2 += i2;
+                    ps += i1 >> 1;
+                    y = vflt_step(&fa, &V->flta, clamp(s, -65535, 65535));
+                    mono[i] += mulq15(mulq15(clamp(y, -32767, 32767), e0), g);
+                    e0 += de;
+                }
+                V->ph1 = p1;
+                V->ph2 = p2;
+                V->phs = ps;
+            }
+            V->env = V->envg > V->enva ? V->envg : V->enva;   /* (the voice sounds while either layer does) */
         }
         for (i = 0; i < m; i++) {
             out[2u * (b + i)] += mono[i];
@@ -521,7 +629,7 @@ static void gp_audio(int32_t *out, uint32_t n)
             dry[b + i] = mono[i];
         }
     }
-    /* OberVave's effects: the drive beside the dry sound, then the chorus, the delay and the reverb, each fed by it */
+    /* OberVave's effects on the whole sound: the drive beside it, then the chorus, the delay and the reverb */
     fx_block(gp_p[GQ_CRATE], gp_p[GQ_CDEPTH], gp_p[GQ_CMIX], (int32_t)gp_dly_ms(gp_p[GQ_DTIME]), gp_p[GQ_DFB],
              gp_p[GQ_DTONE], gp_p[GQ_DMIX], gp_p[GQ_RSIZE], gp_p[GQ_RDAMP], gp_p[GQ_RPRE], gp_p[GQ_RMIX], n);
     drive_process(out, dry, n, (uint32_t)gp_p[GQ_VTYPE], (uint32_t)gp_p[GQ_VAMT], (uint32_t)gp_p[GQ_VTONE],
@@ -543,18 +651,21 @@ static void gp_voice_on(uint32_t note, uint32_t vel)
                        : gpv[v].gate ? 0x80000000u + gpv[v].age : (uint32_t)gpv[v].env + 1u;
         if (score < best) { best = score; pick = v; }
     }
-    if (!gpv[pick].env) {                       /* a fresh voice: no grains from before, the filter clear */
+    if (!gpv[pick].env) {                       /* a fresh voice: no grains from before, the filters clear */
         gp_kill(pick);
         memset(&gpv[pick].flt, 0, sizeof gpv[pick].flt);
+        memset(&gpv[pick].flta, 0, sizeof gpv[pick].flta);
         gpv[pick].morph = ((gp_p[GQ_MORPH] << 8) * 16513 + 8192) >> 14;
-        gpv[pick].bph1 = 0;
-        gpv[pick].bph2 = 0x40000000u;           /* (the second saw a quarter on: no doubled edge at the start) */
+        gpv[pick].ph1 = 0;
+        gpv[pick].ph2 = 0x40000000u;            /* (the second oscillator a quarter on: no doubled edge at the start) */
+        gpv[pick].phs = 0;
+        if (!gpv[pick].nrng) gpv[pick].nrng = (int32_t)(0x1F123BB5u + pick * 0x9E3779B9u);
     }
     gpv[pick].note = (uint8_t)note;
     gpv[pick].age = ++gp_ages;
     gpv[pick].lvl = (int32_t)(vel * GP_VOICE / 127u);
     gpv[pick].next = 0;                         /* the first grain at once */
-    gpv[pick].dec = 0;                          /* the attack again, from where the level is */
+    gpv[pick].decg = gpv[pick].deca = 0;        /* both attacks again, from where the levels are */
     gpv[pick].gate = 1;
 }
 static void gp_voice_off(uint32_t note)

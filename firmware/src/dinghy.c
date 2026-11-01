@@ -4,31 +4,34 @@
  * LEDs, the screen, flash storage; the FM-1 and the SMK-37), with OberVave's filter, effects, arpeggiator and
  * sequencer.
  *
- *   keys       play the grains, 8 voices; the notes go out over USB-MIDI too, on the MIDI channel
- *   SELECT     the page: SRC A, SRC B (TYPE TONE MOVE SEED), GRAIN (SIZE DENS POS SPRD),
- *              GRAIN+ (MORPH RAND PITCH SCAN), FILTER (TYPE CUT RES DRIVE: OberVave's), FILTER+ (KTRK SEM),
- *              ENV (ATK DEC SUS REL), LFO (RATE WAVE DEPTH DEST); ARP (MODE DIV OCT GATE) by the ARP button only
+ *   keys       play the sound, 8 voices of two layers each: the grains and an analog synth; the notes go out over
+ *              USB-MIDI too, on the MIDI channel
+ *   ALGORITHM  the layer the sound's functions show: GRAIN (turned left) or ANALOG (turned right)
+ *   EDIT       GRAIN: SRC A, SRC B (TYPE TONE MOVE SEED), GRAIN (SIZE DENS POS SPRD), GRAIN+ (MORPH RAND PITCH SCAN);
+ *              ANALOG: ANA OSC (WAVE DETUN OCT PW), ANA OSC+ (SUB NOISE)
+ *   SEL        the layer's filter (OberVave's): FILTER (TYPE CUT RES DRIVE), FILTER+ (KTRK SEM)
+ *   ENV LFO    the layer's ADSR (ATK DEC SUS REL), its LFO (RATE WAVE DEPTH DEST)
+ *   GLO        GLOBAL: the two layers' levels, the MIDI channel (OMNI or 1..16)
+ *   ARP        a short press: the arpeggiator on (lit) or off, and its page (MODE DIV OCT GATE); held: HOLD (the notes
+ *              stay after the keys are up, until a new chord; ARP blinks)
+ *   FX         a short press: the effects' pages and back (CHORUS, DELAY, REVERB, DRIVE: OberVave's, on the whole
+ *              sound); held: FX MIX, the four effects' MIX on the four knobs
+ *   SELECT     the pages of the function its button opened (a button pressed again: the next one too)
  *   KNOB 1..4  the page's four values; the faster the turn, the bigger the step
- *   FX         the effects' pages and back (lit there): CHORUS (RATE DEPTH MIX), DELAY (TIME FDBK TONE MIX),
- *              REVERB (SIZE DAMP PRE MIX), DRIVE (TYPE AMNT TONE MIX): OberVave's; BASS (LEVEL DETUN OCT): an
- *              analog bass under the grains, two detuned saws through the filter and the effects
- *   EDIT       SRC A, SRC B, GRAIN, GRAIN+ (where it was left; pressed again: the next of them)
- *   SEL        FILTER, FILTER+ (the same way)
- *   ENV LFO    straight to their page
- *   ARP        the arpeggiator on (lit) or off, and its page
  *   SEQ        the step sequencer's screen (lit): the keys write the step under the cursor (a chord: keys held
  *              together) and move on, REC writes a rest, SELECT moves the cursor, KNOB 1..4 TEMPO LENGTH DIV SWING
  *   PLAY       the sequencer runs (lit, a blink a beat) or stops; MIDI START / STOP too, a MIDI clock sets the tempo
- *   HOME       the screen after the splash; a short press: the wave and an oscilloscope of the output; a knob or SELECT goes back to the pages
- *   PRESETS    the sound: the 8 factory presets, then the user presets saved; MIDI program change too
+ *   HOME       the screen after the splash, a short press too: the layer, the wave and an oscilloscope of the output;
+ *              a knob or SELECT goes back to the pages
+ *   PRESETS    the sound: the factory presets, then the user presets saved; MIDI program change too
  *   SAVE       save the sound: PRESETS picks the user slot (1..16), SAVE again writes it, HOME cancels
- *   ALGORITHM  the MIDI channel: OMNI (in: all, out: 1) or 1..16
  *   OCT- OCT+  the octave
  *   MASTER     the volume (platform.c)
  *   SMK-37     the keys with velocity, the outer keys too, the pads (white keys F3..G5, lit while they sound), the
  *              pitch wheel bends +-2 semitones
  * The buttons that do something glow; they light fully while what they do is on. The sound being played, the octave,
- * the channel and the page are kept in flash (2 s after a change, when silent), the sequence too (when stopped).
+ * the channel, the function and the layer are kept in flash (2 s after a change, when silent), the sequence too (when
+ * stopped).
  *
  * Rules of the road (the chip has no FPU and no libgcc): integers only, no float, no 64-bit division.
  * tests/host.c runs this file on a computer: the screen as a PNG, the sound as a WAV.
@@ -47,27 +50,43 @@ static void app_audio(int32_t *out, uint32_t n)
     gp_audio(out, n);
 }
 
-/* ---- the pages: eight of the sound, then four of the effects (FX goes there and back), four knobs each */
-#define NPAGE 14u
-#define FX_PAGE0 9u
-#define PG_SRC_A 0u                             /* EDIT: SRC A, SRC B, GRAIN, GRAIN+ */
-#define PG_GRAIN2 3u
-#define PG_FILTER 4u                            /* SEL: FILTER, FILTER+ */
-#define PG_FILTER2 5u
-#define PG_ENV 6u
-#define PG_LFO 7u
-#define PG_ARP 8u                               /* (the last of the sound's: SELECT stops before it, ARP opens it) */
-#define QX 0xFFu                                /* a page's empty place */
-static const uint8_t PAGE_Q[NPAGE][4] = {      /* the knobs of each page */
-    {GQ_TYPE_A, GQ_TONE_A, GQ_MOTION_A, GQ_SEED_A}, {GQ_TYPE_B, GQ_TONE_B, GQ_MOTION_B, GQ_SEED_B},
-    {GQ_SIZE, GQ_DENS, GQ_POS, GQ_SPRD}, {GQ_MORPH, GQ_RAND, GQ_PITCH, GQ_SCAN},
-    {GQ_FTYPE, GQ_CUT, GQ_RES, GQ_FDRIVE}, {GQ_KTRK, GQ_FMORPH, QX, QX}, {GQ_ATK, GQ_DEC, GQ_SUS, GQ_REL},
-    {GQ_LRATE, GQ_LWAVE, GQ_LDEPTH, GQ_LDEST}, {GQ_AMODE, GQ_ADIV, GQ_AOCT, GQ_AGATE},
-    {GQ_CRATE, GQ_CDEPTH, GQ_CMIX, QX}, {GQ_DTIME, GQ_DFB, GQ_DTONE, GQ_DMIX}, {GQ_RSIZE, GQ_RDAMP, GQ_RPRE, GQ_RMIX},
-    {GQ_VTYPE, GQ_VAMT, GQ_VTONE, GQ_VMIX}, {GQ_BVOL, GQ_BDET, GQ_BOCT, QX}};
-static const char *const PAGE_NAME[NPAGE] = {"SRC A", "SRC B", "GRAIN", "GRAIN+", "FILTER", "FILTER+", "ENV", "LFO", "ARP",
-                                             "FX CHORUS", "FX DELAY", "FX REVERB", "FX DRIVE", "FX BASS"};
-static const uint8_t OLD_N[2] = {GQ_N_V041, GQ_N_V04};   /* the values a sound had in 0.41, in 0.4: read again */
+/* ---- the pages: four knobs each (QX: none, QCH: the MIDI channel, the device's own). The functions' buttons open
+ * their pages, SELECT turns through them; ALGORITHM picks the layer the sound's functions show */
+#define QX 0xFFu
+#define QCH 0xFEu
+enum { P_SRCA, P_SRCB, P_GRAIN, P_GRAIN2, P_FILT, P_FILT2, P_ENV, P_LFO, P_OSC, P_OSC2, P_AFILT, P_AFILT2, P_AENV,
+       P_ALFO, P_ARP, P_CHO, P_DLY, P_REV, P_DRV, P_MIX, P_GLOBAL, NPAGE };   /* (P_SRCA, P_SRCB: the wave of A, of B) */
+typedef struct { const char *name; uint8_t q[4]; } page_t;
+static const page_t PAGES[NPAGE] = {
+    {"SRC A", {GQ_TYPE_A, GQ_TONE_A, GQ_MOTION_A, GQ_SEED_A}}, {"SRC B", {GQ_TYPE_B, GQ_TONE_B, GQ_MOTION_B, GQ_SEED_B}},
+    {"GRAIN", {GQ_SIZE, GQ_DENS, GQ_POS, GQ_SPRD}}, {"GRAIN+", {GQ_MORPH, GQ_RAND, GQ_PITCH, GQ_SCAN}},
+    {"FILTER", {GQ_FTYPE, GQ_CUT, GQ_RES, GQ_FDRIVE}}, {"FILTER+", {GQ_KTRK, GQ_FMORPH, QX, QX}},
+    {"ENV", {GQ_ATK, GQ_DEC, GQ_SUS, GQ_REL}}, {"LFO", {GQ_LRATE, GQ_LWAVE, GQ_LDEPTH, GQ_LDEST}},
+    {"ANA OSC", {GQ_OWAVE, GQ_ODET, GQ_OOCT, GQ_OPW}}, {"ANA OSC+", {GQ_OSUB, GQ_ONOISE, QX, QX}},
+    {"ANA FILT", {GQ_AFTYPE, GQ_ACUT, GQ_ARES, GQ_AFDRIVE}}, {"ANA FILT+", {GQ_AKTRK, GQ_AFMORPH, QX, QX}},
+    {"ANA ENV", {GQ_AATK, GQ_ADEC, GQ_ASUS, GQ_AREL}}, {"ANA LFO", {GQ_ALRATE, GQ_ALWAVE, GQ_ALDEPTH, GQ_ALDEST}},
+    {"ARP", {GQ_AMODE, GQ_ADIV, GQ_AOCT, GQ_AGATE}},
+    {"FX CHORUS", {GQ_CRATE, GQ_CDEPTH, GQ_CMIX, QX}}, {"FX DELAY", {GQ_DTIME, GQ_DFB, GQ_DTONE, GQ_DMIX}},
+    {"FX REVERB", {GQ_RSIZE, GQ_RDAMP, GQ_RPRE, GQ_RMIX}}, {"FX DRIVE", {GQ_VTYPE, GQ_VAMT, GQ_VTONE, GQ_VMIX}},
+    {"FX MIX", {GQ_CMIX, GQ_DMIX, GQ_RMIX, GQ_VMIX}}, {"GLOBAL", {GQ_GLEV, GQ_ALEV, QCH, QX}}};
+static const char *const MIX_NAMES[4] = {"CHOR", "DELAY", "REVB", "DRIVE"};   /* (FX MIX: four MIX told apart) */
+enum { FN_EDIT, FN_SEL, FN_ENV, FN_LFO, FN_ARP, FN_FX, FN_MIX, FN_GLO, NFN };
+static const uint8_t FN_PAGE[NFN][2][5] = {    /* each function's pages: the grain layer's, the analog's; 0xFF ends */
+    {{P_SRCA, P_SRCB, P_GRAIN, P_GRAIN2, 0xFF}, {P_OSC, P_OSC2, 0xFF}},
+    {{P_FILT, P_FILT2, 0xFF}, {P_AFILT, P_AFILT2, 0xFF}},
+    {{P_ENV, 0xFF}, {P_AENV, 0xFF}},
+    {{P_LFO, 0xFF}, {P_ALFO, 0xFF}},
+    {{P_ARP, 0xFF}, {P_ARP, 0xFF}},
+    {{P_CHO, P_DLY, P_REV, P_DRV, 0xFF}, {P_CHO, P_DLY, P_REV, P_DRV, 0xFF}},
+    {{P_MIX, 0xFF}, {P_MIX, 0xFF}},
+    {{P_GLOBAL, 0xFF}, {P_GLOBAL, 0xFF}}};
+static uint32_t fn_count(uint32_t fn, uint32_t layer)
+{
+    uint32_t n = 0;
+    while (n < 5u && FN_PAGE[fn][layer][n] != 0xFFu) n++;
+    return n;
+}
+static const char *const LAYER_NAME[2] = {"GRAIN", "ANALOG"};
 enum { V_PAGES, V_HOME, V_SEQ };                /* what the screen shows */
 
 /* ---- the presets: the factory ones (grain.c), then NUSER the user saves (blob 0) */
@@ -75,12 +94,18 @@ enum { V_PAGES, V_HOME, V_SEQ };                /* what the screen shows */
 #define NPRESET (GP_NFACT + NUSER)
 static struct { uint8_t used[NUSER]; int8_t p[NUSER][GQ_N]; } user;
 static uint32_t preset_ok(uint32_t i) { return i < GP_NFACT || (i < NPRESET && user.used[i - GP_NFACT]); }
-static void preset_load(uint32_t i)
+static void preset_load(uint32_t i)            /* a factory one: the defaults, then its pairs; a user's: its values */
 {
-    const int8_t *src = i < GP_NFACT ? GP_FACT[i] : user.p[i - GP_NFACT];
     uint32_t k;
+    if (i < GP_NFACT) {
+        const int8_t *kv;
+        gp_defaults();
+        for (kv = GP_FACT[i]; kv[0] >= 0; kv += 2)
+            gp_p[kv[0]] = (int8_t)clamp(kv[1], GQ[kv[0]].min, GQ[kv[0]].max);
+        return;
+    }
     for (k = 0; k < GQ_N; k++)
-        gp_p[k] = (int8_t)clamp(src[k], GQ[k].min, GQ[k].max);
+        gp_p[k] = (int8_t)clamp(user.p[i - GP_NFACT][k], GQ[k].min, GQ[k].max);
 }
 static void preset_name(uint32_t i, char *s)    /* "CLOUD PAD", "USER 3" */
 {
@@ -173,19 +198,29 @@ static void draw_scope(void)
     cv_blit(0, SCOPE_Y);
 }
 
-static void draw_cells(uint32_t pg)
+static void draw_cells(uint32_t pg, uint32_t ch)   /* ch: the MIDI channel (QCH) */
 {
     uint32_t c;
     cv_begin(240, 56, C_BLACK);
     for (c = 0; c < 4u; c++) {
-        uint32_t q = PAGE_Q[pg][c];
-        int32_t x0 = (int32_t)c * 60, v = gp_p[q], w;
-        char s[12];
+        uint32_t q = PAGES[pg].q[c];
+        int32_t x0 = (int32_t)c * 60, v, w;
+        char s[12], *p = s;
+        const char *name;
         if (q == QX) continue;                  /* (a page with fewer knobs) */
-        gq_text(q, v, s);
-        cv_text(x0 + (60 - text_w(&FONT_S, GQ[q].name)) / 2, 2, &FONT_S, GQ[q].name, C_OFF);
+        if (q == QCH) {                         /* the MIDI channel: OMNI or 1..16 */
+            name = "MIDI";
+            if (ch) gq_put_dec(&p, ch); else gq_put_str(&p, "OMNI");
+            *p = 0;
+            w = (int32_t)ch * 48 / 16;
+        } else {
+            v = gp_p[q];
+            name = pg == P_MIX ? MIX_NAMES[c] : GQ[q].name;
+            gq_text(q, v, s);
+            w = (v - GQ[q].min) * 48 / (GQ[q].max - GQ[q].min);
+        }
+        cv_text(x0 + (60 - text_w(&FONT_S, name)) / 2, 2, &FONT_S, name, C_OFF);
         cv_text(x0 + (60 - text_w(&FONT_S, s)) / 2, 22, &FONT_S, s, C_WHITE);
-        w = (v - GQ[q].min) * 48 / (GQ[q].max - GQ[q].min);
         cv_rect(x0 + 6, 46, 48, 6, C_DIMBAR);
         cv_rect(x0 + 6, 46, w, 6, c & 1u ? C_ACC : C_SRC_A);
     }
@@ -256,15 +291,16 @@ static void note_name(uint32_t n, char **p)     /* "C4", "F#2" */
     else gq_put_dec(p, n / 12u - 1u);
 }
 
-/* HOME's line: the arp, the sequencer, the tempo */
-static void draw_home_line(uint32_t run, uint32_t bpm)
+/* HOME's line: the arp (and HOLD), the sequencer, the tempo while it fits (24 characters: 240 px of FONT_S) */
+static void draw_home_line(uint32_t run, uint32_t bpm, uint32_t hold)
 {
     char s[40], *p = s;
     gq_put_str(&p, "ARP ");
     gq_put_str(&p, ARP_NAMES[clamp(gp_p[GQ_AMODE], 0, NARPMODE - 1)]);
-    gq_put_str(&p, run ? "  PLAY " : "  STOP ");     /* (at most 24 characters: 240 px of FONT_S) */
-    gq_put_dec(&p, bpm);
-    gq_put_str(&p, " BPM");
+    if (hold) gq_put_str(&p, " HOLD");
+    gq_put_str(&p, run ? "  PLAY" : "  STOP");
+    if (p - s <= 16) { *p++ = ' '; gq_put_dec(&p, bpm); }
+    if (p - s <= 20) gq_put_str(&p, " BPM");
     *p = 0;
     draw_text_box(0, 204, 240, &FONT_S, s, C_OFF, 1);
 }
@@ -342,7 +378,7 @@ static void led_fn(uint32_t id, uint32_t on)
 }
 
 /* ---- MIDI in: from the main loop, and from app_idle while the screen draws (idle_ok) */
-static struct { uint8_t oct, ch, page, cur, mod; int8_t p[GQ_N]; } set;   /* what survives a power-off */
+static struct { uint8_t oct, ch, fn, layer, cur, mod; int8_t p[GQ_N]; } set;   /* what survives a power-off */
 
 /* ---- the settings as a journal in their sector: each save goes after the last one ([KLOG][length][crc32] then the
  * bytes, a word-aligned record), and the sector is erased only when it is full (~50 saves). A save then programs
@@ -449,8 +485,9 @@ static void app_main(void)
     uint32_t prev = 0, k, t_change = 0, dirty = 0, status_drawn = ~0u, midi_drawn = ~0u, preset_drawn = ~0u;
     uint32_t page_drawn = ~0u, cells_drawn = ~0u, wave_page = ~0u, wave_renders = ~0u, wave_morph = ~0u;
     uint32_t wave_t = 0, wave_live = 1, wave_pos = ~0u, saving = 0, save_to = 0, save_drawn = ~0u;
-    uint32_t sound_pg = 0, fx_pg = FX_PAGE0;    /* the page left on either side of FX */
-    uint32_t edit_pg = PG_SRC_A, filt_pg = PG_FILTER;   /* the page left in either group */
+    uint32_t fn = FN_EDIT, layer = 0, sound_fn = FN_EDIT, fn_idx[NFN][2] = {{0}};   /* the function, the layer, the
+                                                 * function FX goes back to, the page each function was left on */
+    uint32_t t_dn[2] = {0, 0}, fired[2] = {1, 1};   /* ARP, FX: when pressed, a long press already done */
     uint32_t view = V_HOME, view_drawn = ~0u, t_home = 0, scope_t = 0, line_drawn = ~0u, seq_drawn = ~0u, seq_t = 0;
     uint32_t cursor = 0, step_in = 0, pat_dirty = 0, arp_last = A_UP, beat_seen = 0, beat_t = 0;
     uint8_t held[27] = {0};                     /* the note each key plays */
@@ -460,40 +497,19 @@ static void app_main(void)
     smk_pw_t wheel = {0};
     smk_pad_events = 1;                         /* the pads as events (smk_pad_take): they play here, lit while they sound */
 #endif
-    if (blob_load(0, &user, sizeof user)) {     /* the user presets; 0.41's and 0.4's (fewer values a sound) read again,
-                                                 * the values they did not have at their defaults */
-        static uint8_t raw[NUSER + NUSER * GQ_N];
-        uint32_t o, j;
+    if (blob_load(0, &user, sizeof user))       /* the user presets */
         for (k = 0; k < NUSER; k++) user.used[k] = 0;
-        for (o = 0; o < 2u; o++)
-            if (!blob_load(0, raw, NUSER + NUSER * (uint32_t)OLD_N[o])) {
-                for (k = 0; k < NUSER; k++) {
-                    user.used[k] = raw[k];
-                    for (j = 0; j < GQ_N; j++) user.p[k][j] = j < OLD_N[o] ? (int8_t)raw[NUSER + k * OLD_N[o] + j] : GQ[j].def;
-                }
-                break;
-            }
-    }
     if (blob_load(1, &pat, sizeof pat) || pat.len < 1u || pat.len > SEQ_MAX || pat.div >= NDIV)   /* the sequence */
         pat_init(&pat);
-    k = !log_load(&set, sizeof set) || !settings_load(&set, sizeof set);   /* the journal, else 0.5's sector */
-    if (!k) {                                   /* 0.41's or 0.4's settings: their sound again (0.4: the pages from the first) */
-        static uint8_t raw[5u + GQ_N];
-        uint32_t o, j;
-        for (o = 0; o < 2u && !k; o++)
-            if (!settings_load(raw, 5u + OLD_N[o])) {
-                set.oct = raw[0], set.ch = raw[1], set.page = o ? 0u : raw[2], set.cur = raw[3], set.mod = raw[4];
-                for (j = 0; j < GQ_N; j++) set.p[j] = j < OLD_N[o] ? (int8_t)raw[5u + j] : GQ[j].def;
-                k = 1;
-            }
-    }
-    if (!k || (int8_t)set.oct < -2 || (int8_t)set.oct > 2 || set.ch > 16u
-        || set.page >= NPAGE || !preset_ok(set.cur)) {
-        set.oct = 0, set.ch = 0, set.page = 0, set.cur = 0, set.mod = 0;
+    if (log_load(&set, sizeof set) || (int8_t)set.oct < -2 || (int8_t)set.oct > 2 || set.ch > 16u || set.fn >= NFN
+        || set.layer > 1u || !preset_ok(set.cur)) {
+        set.oct = 0, set.ch = 0, set.fn = FN_EDIT, set.layer = 0, set.cur = 0, set.mod = 0;
         preset_load(0);
     } else
         for (k = 0; k < GQ_N; k++)              /* (a value out of its range: its default) */
             gp_p[k] = set.p[k] < GQ[k].min || set.p[k] > GQ[k].max ? GQ[k].def : set.p[k];
+    fn = set.fn;
+    layer = set.layer;
 
     splash();                                   /* 1.5 s, while the two sources render */
     for (k = fm1_ms; fm1_ms - k < 1500u;) {
@@ -503,7 +519,7 @@ static void app_main(void)
     lcd_fill(0, 0, 240, 240, C_BLACK);
 
     for (;;) {
-        uint32_t keys, down, up, rel, b, lit = 0, out_ch = set.ch ? set.ch - 1u : 0u, st, pg = set.page, bpm;
+        uint32_t keys, down, up, rel, b, lit = 0, out_ch = set.ch ? set.ch - 1u : 0u, st, pg, bpm;
         int32_t oct = (int8_t)set.oct, e;
         uint32_t base = (uint32_t)((int32_t)KEY0 + 12 * oct);
         platform_poll();
@@ -566,12 +582,9 @@ static void app_main(void)
             if (ctl_seq_run) ctl_seq_run = 0;
             else { ctl_seq_restart = 1; ctl_seq_run = 1; }
         }
-        if ((e = fm1_enc_take(ENC_ALGORITHM)) != 0) {   /* the MIDI channel */
-            int32_t c = (int32_t)set.ch + e;
-            set.ch = (uint8_t)(c < 0 ? 0 : c > 16 ? 16 : c);
-            dirty = 1;
-            t_change = fm1_ms;
-        }
+        if ((e = fm1_enc_take(ENC_ALGORITHM)) != 0)   /* the layer: GRAIN (left), ANALOG (right) */
+            layer = e > 0 ? 1u : 0u;
+        pg = FN_PAGE[fn][layer][fn_idx[fn][layer] % fn_count(fn, layer)];
         e = fm1_enc_take(ENC_PRESETS);
         if (saving) {                           /* the save screen: PRESETS the slot, SAVE writes, HOME cancels */
             save_to = (uint32_t)clamp((int32_t)save_to + e, 0, (int32_t)NUSER - 1);
@@ -620,34 +633,52 @@ static void app_main(void)
                 view = V_HOME;
             if (b & (1u << BTN_SEQ))
                 view = view == V_SEQ ? V_PAGES : V_SEQ;
-            if (b & (1u << BTN_ARP)) {          /* the arp on (as it was last) or off, and its page */
-                if (gp_p[GQ_AMODE] != A_OFF) { arp_last = (uint32_t)gp_p[GQ_AMODE]; gp_p[GQ_AMODE] = A_OFF; }
-                else gp_p[GQ_AMODE] = (int8_t)arp_last;
-                view = V_PAGES;
-                set.page = (uint8_t)PG_ARP;
-                set.mod = 1;
-                dirty = 1;
-                t_change = fm1_ms;
+            for (k = 0; k < 2u; k++) {          /* ARP, FX: a short press on release, a long one (half a second) held */
+                uint32_t id = k ? BTN_FX : BTN_ARP;
+                if (b & (1u << id)) { t_dn[k] = fm1_ms; fired[k] = 0; }
+                if (!fired[k] && (fm1_in.buttons >> id & 1u) && fm1_ms - t_dn[k] >= 500u) {
+                    fired[k] = 1;
+                    if (!k)                     /* ARP held: HOLD on or off */
+                        ctl_hold = !ctl_hold;
+                    else {                      /* FX held: the four effects' MIX */
+                        if (fn != FN_FX && fn != FN_MIX) sound_fn = fn;
+                        fn = FN_MIX;
+                        view = V_PAGES;
+                    }
+                }
+                if (rel & (1u << id) && !fired[k]) {
+                    fired[k] = 1;
+                    if (!k) {                   /* ARP: the arp on (as it was last) or off, and its page */
+                        if (gp_p[GQ_AMODE] != A_OFF) { arp_last = (uint32_t)gp_p[GQ_AMODE]; gp_p[GQ_AMODE] = A_OFF; }
+                        else gp_p[GQ_AMODE] = (int8_t)arp_last;
+                        fn = FN_ARP;
+                        set.mod = 1;
+                        dirty = 1;
+                        t_change = fm1_ms;
+                    } else if (view == V_PAGES && (fn == FN_FX || fn == FN_MIX))
+                        fn = sound_fn;          /* FX: back to the sound */
+                    else {
+                        if (fn != FN_FX && fn != FN_MIX) sound_fn = fn;
+                        fn = FN_FX;             /* .. or to the effects */
+                    }
+                    view = V_PAGES;
+                }
             }
             /* (a page changed is not saved by itself: a save erases a flash sector with the interrupts off for some
              * 50 ms, and the LED scan stops on one column meanwhile, a visible jump. The page goes with the next save) */
-            if (b & (1u << BTN_EDIT)) {         /* EDIT: the sources and the grains, where it was left; again: the next */
-                set.page = (uint8_t)(view == V_PAGES && pg <= PG_GRAIN2 ? (pg >= PG_GRAIN2 ? PG_SRC_A : pg + 1u) : edit_pg);
-                view = V_PAGES;
+            {                                   /* EDIT SEL ENV LFO GLO: their function; pressed again: its next page */
+                static const uint8_t FB[5][2] = {{BTN_EDIT, FN_EDIT}, {BTN_SEL, FN_SEL}, {BTN_ENV, FN_ENV},
+                                                 {BTN_LFO, FN_LFO}, {BTN_GLO, FN_GLO}};
+                for (k = 0; k < 5u; k++)
+                    if (b & (1u << FB[k][0])) {
+                        uint32_t f = FB[k][1];
+                        if (view == V_PAGES && fn == f)
+                            fn_idx[f][layer] = (fn_idx[f][layer] + 1u) % fn_count(f, layer);
+                        fn = f;
+                        view = V_PAGES;
+                    }
             }
-            if (b & (1u << BTN_SEL)) {          /* SEL: the filter's two pages, the same way */
-                set.page = (uint8_t)(view == V_PAGES && (pg == PG_FILTER || pg == PG_FILTER2) ? (pg == PG_FILTER ? PG_FILTER2 : PG_FILTER) : filt_pg);
-                view = V_PAGES;
-            }
-            if (b & (1u << BTN_ENV)) { view = V_PAGES; set.page = (uint8_t)PG_ENV; }
-            if (b & (1u << BTN_LFO)) { view = V_PAGES; set.page = (uint8_t)PG_LFO; }
-            if (b & (1u << BTN_FX)) {           /* FX: to the effects' pages and back, each where it was left */
-                if (view != V_PAGES) { if (set.page < FX_PAGE0) { sound_pg = set.page; set.page = (uint8_t)fx_pg; } }
-                else if (set.page < FX_PAGE0) { sound_pg = set.page; set.page = (uint8_t)fx_pg; }
-                else { fx_pg = set.page; set.page = (uint8_t)sound_pg; }
-                view = V_PAGES;
-            }
-            pg = set.page;
+            pg = FN_PAGE[fn][layer][fn_idx[fn][layer] % fn_count(fn, layer)];
             if (view == V_SEQ) {                /* SEQ: the cursor, a rest, TEMPO LENGTH DIV SWING */
                 uint32_t len = (uint32_t)clamp(pat.len, 1, SEQ_MAX);
                 if ((e = fm1_enc_take(ENC_SELECT)) != 0)
@@ -663,23 +694,28 @@ static void app_main(void)
                 if ((e = fm1_enc_take(ENC_KNOB3)) != 0) { pat.div = (uint8_t)clamp(pat.div + e, 0, NDIV - 1); pat_dirty = 1; t_change = fm1_ms; }
                 if ((e = fm1_enc_take(ENC_KNOB4)) != 0) { pat.swing = (uint8_t)clamp(pat.swing + e, 50, 75); pat_dirty = 1; t_change = fm1_ms; }
             } else {
-                if ((e = fm1_enc_take(ENC_SELECT)) != 0) {    /* the page, among the sound's or the effects' */
-                    int32_t c = (int32_t)set.page + e, lo = pg < FX_PAGE0 ? 0 : (int32_t)FX_PAGE0;
-                    int32_t hi = pg < FX_PAGE0 ? (int32_t)PG_ARP - 1 : (int32_t)NPAGE - 1;   /* (not ARP: its button) */
-                    if (view != V_PAGES) c = (int32_t)set.page;   /* (from HOME: back to the page first) */
-                    set.page = (uint8_t)(c < lo ? lo : c > hi ? hi : c);
-                    pg = set.page;
+                if ((e = fm1_enc_take(ENC_SELECT)) != 0) {    /* the function's pages, round (from HOME: back first) */
+                    int32_t c = (int32_t)fn_count(fn, layer);
+                    if (view == V_PAGES)
+                        fn_idx[fn][layer] = (uint32_t)(((int32_t)fn_idx[fn][layer] + e % c + c) % c);
+                    pg = FN_PAGE[fn][layer][fn_idx[fn][layer] % (uint32_t)c];
                     view = V_PAGES;
                 }
                 for (k = 0; k < 4u; k++)        /* the page's values */
                     if ((e = fm1_enc_take(ENC_KNOB1 + k)) != 0) {
-                        uint32_t q = PAGE_Q[pg][k];
+                        uint32_t q = PAGES[pg].q[k];
                         int32_t v, lo, hi, fmt;
                         view = V_PAGES;
                         if (q == QX) continue;
+                        if (q == QCH) {         /* the MIDI channel: the device's, not the sound's */
+                            set.ch = (uint8_t)clamp((int32_t)set.ch + e, 0, 16);
+                            dirty = 1;
+                            t_change = fm1_ms;
+                            continue;
+                        }
                         lo = GQ[q].min, hi = GQ[q].max, fmt = GQ[q].fmt;
                         if (fmt == GF_TYPE || fmt == GF_LWAVE || fmt == GF_LDEST || fmt == GF_FTYPE || fmt == GF_VTYPE
-                            || fmt == GF_ARP || fmt == GF_DIV)   /* a list: round it, a step a detent */
+                            || fmt == GF_ARP || fmt == GF_DIV || fmt == GF_OWAVE || fmt == GF_ADEST)   /* a list: round it, a step a detent */
                             v = (int32_t)(((uint32_t)(gp_p[q] + e % (hi + 1) + (hi + 1))) % (uint32_t)(hi + 1));
                         else
                             v = gp_p[q] + enc_fast(k, e);
@@ -709,14 +745,13 @@ static void app_main(void)
         led_fn(BTN_OCT_UP, oct > 0);
         led_fn(BTN_SAVE, saving);
         led_fn(BTN_HOME, view == V_HOME && !saving);
-        led_fn(BTN_FX, view == V_PAGES && pg >= FX_PAGE0);
-        if (pg <= PG_GRAIN2) edit_pg = pg;      /* (where EDIT and SEL take back to) */
-        if (pg == PG_FILTER || pg == PG_FILTER2) filt_pg = pg;
-        led_fn(BTN_EDIT, view == V_PAGES && pg <= PG_GRAIN2);
-        led_fn(BTN_SEL, view == V_PAGES && (pg == PG_FILTER || pg == PG_FILTER2));
-        led_fn(BTN_ENV, view == V_PAGES && pg == PG_ENV);
-        led_fn(BTN_LFO, view == V_PAGES && pg == PG_LFO);
-        led_fn(BTN_ARP, gp_p[GQ_AMODE] != A_OFF);
+        led_fn(BTN_FX, view == V_PAGES && (fn == FN_FX || fn == FN_MIX));
+        led_fn(BTN_EDIT, view == V_PAGES && fn == FN_EDIT);
+        led_fn(BTN_SEL, view == V_PAGES && fn == FN_SEL);
+        led_fn(BTN_ENV, view == V_PAGES && fn == FN_ENV);
+        led_fn(BTN_LFO, view == V_PAGES && fn == FN_LFO);
+        led_fn(BTN_GLO, view == V_PAGES && fn == FN_GLO);
+        led_fn(BTN_ARP, ctl_hold ? (fm1_ms / 300u) & 1u : gp_p[GQ_AMODE] != A_OFF);   /* HOLD: it blinks */
         led_fn(BTN_SEQ, view == V_SEQ);
         led_fn(BTN_PLAY, ctl_seq_run ? fm1_ms - beat_t >= 80u : clk_bpm && fm1_ms - clk_beat_ms < 80u);   /* a blink a beat */
         if (view == V_SEQ) led_fn(BTN_REC, 0);  /* (REC: a rest, on the SEQ screen only) */
@@ -753,13 +788,16 @@ static void app_main(void)
         } else {
             uint32_t sum = pg, live = 0, wpg = view == V_HOME ? 2u : pg;
             if (view == V_HOME) {
-                if (page_drawn != ~3u) { page_drawn = ~3u; draw_text_box(0, 28, 240, &FONT_L, "KAYAK", C_ACC, 1); }
+                if (page_drawn != 100u + layer) { page_drawn = 100u + layer; draw_text_box(0, 28, 240, &FONT_L, LAYER_NAME[layer], C_ACC, 1); }
                 if (fm1_ms - scope_t >= 40u) { scope_t = fm1_ms; draw_scope(); }   /* 25 frames a second */
-                if ((st = (uint32_t)gp_p[GQ_AMODE] | ctl_seq_run << 4 | bpm << 8) != line_drawn) { line_drawn = st; draw_home_line(ctl_seq_run, bpm); }
+                if ((st = (uint32_t)gp_p[GQ_AMODE] | ctl_seq_run << 4 | ctl_hold << 5 | bpm << 8) != line_drawn) { line_drawn = st; draw_home_line(ctl_seq_run, bpm, ctl_hold); }
             } else {
-                if (pg != page_drawn) { page_drawn = pg; draw_text_box(0, 28, 240, &FONT_L, PAGE_NAME[pg], C_WHITE, 1); }
-                for (k = 0; k < 4u; k++) sum = sum * 131u + (uint8_t)(PAGE_Q[pg][k] == QX ? 0 : gp_p[PAGE_Q[pg][k]]);
-                if (sum != cells_drawn) { cells_drawn = sum; draw_cells(pg); }
+                if (pg != page_drawn) { page_drawn = pg; draw_text_box(0, 28, 240, &FONT_L, PAGES[pg].name, C_WHITE, 1); }
+                for (k = 0; k < 4u; k++) {
+                    uint32_t q = PAGES[pg].q[k];
+                    sum = sum * 131u + (q == QX ? 0u : q == QCH ? set.ch : (uint8_t)gp_p[q]);
+                }
+                if (sum != cells_drawn) { cells_drawn = sum; draw_cells(pg, set.ch); }
                 if ((st = (uint32_t)(oct + 2) | (uint32_t)set.ch << 4) != status_drawn) { status_drawn = st; draw_status(oct, set.ch); }
             }
             if ((st = midi_src | clk_bpm << 2 | clk_run << 12) != midi_drawn) { midi_drawn = st; draw_midi(midi_src, clk_bpm, clk_run); }
@@ -779,6 +817,8 @@ static void app_main(void)
 
         if (dirty && gp_quiet() && !grs.busy && fm1_ms - t_change > 2000u) {   /* 2 s after the change, when silent */
             for (k = 0; k < GQ_N; k++) set.p[k] = gp_p[k];
+            set.fn = (uint8_t)fn;
+            set.layer = (uint8_t)layer;
             log_save(&set, sizeof set);
             dirty = 0;
         }

@@ -45,8 +45,11 @@ static uint32_t quarter_len(void)
     return (60u * FS / (uint32_t)clamp((int32_t)bpm, 40, 240) + 24u) / 48u * 48u;
 }
 
-/* ---- the keys held (audio side): the arp plays them */
-static struct { uint8_t note, vel; } held[NHELD];
+/* ---- the keys held (audio side): the arp plays them. phys: the key is down (with HOLD a note stays held after its
+ * key is up, until a new chord starts with every key up: OberVave's latch) */
+static struct { uint8_t note, vel, phys; } held[NHELD];
+static volatile uint32_t ctl_hold;               /* HOLD (main loop: a long press on ARP) */
+static uint32_t hold_was;
 static uint32_t nheld;
 static void held_remove(uint32_t note)
 {
@@ -138,23 +141,45 @@ static void arp_tick(void)
     }
 }
 
-/* ---- the keys' events (OberVave's ev_note_on / ev_note_off): to the held list, then to the arp or the voices */
+/* ---- the keys' events (OberVave's ev_note_on / ev_note_off, its HOLD): to the held list, then to the arp or the
+ * voices */
 static void kayak_events(void)
 {
+    uint32_t arp_on = gp_p[GQ_AMODE] != A_OFF, hold = ctl_hold, i, j;
+    if (hold_was && !hold) {                    /* HOLD let go: what no key holds is released */
+        for (i = j = 0; i < nheld; i++)
+            if (held[i].phys) held[j++] = held[i];
+            else if (!arp_on) gp_voice_off(held[i].note);
+        nheld = j;
+    }
+    hold_was = hold;
     while (evq_r != evq_w) {
-        uint32_t note = evq[evq_r % EVQ_N][0], vel = evq[evq_r % EVQ_N][1], arp_on = gp_p[GQ_AMODE] != A_OFF, i;
+        uint32_t note = evq[evq_r % EVQ_N][0], vel = evq[evq_r % EVQ_N][1];
         evq_r++;
         if (vel) {
+            if (hold) {                         /* a new chord after every key was up: the held one goes */
+                for (i = 0; i < nheld && !held[i].phys; i++) ;
+                if (i == nheld) {
+                    if (!arp_on) for (i = 0; i < nheld; i++) gp_voice_off(held[i].note);
+                    nheld = 0;
+                    arp.pos = 0;
+                    arp.cnt = 0xFFFFFFFFu;
+                }
+            }
             held_remove(note);
             if (nheld == NHELD) { for (i = 1; i < NHELD; i++) held[i - 1u] = held[i]; nheld--; }
             held[nheld].note = (uint8_t)note;
             held[nheld].vel = (uint8_t)vel;
+            held[nheld].phys = 1;
             nheld++;
             if (arp_on) {
                 if (nheld == 1u) { arp.pos = 0; arp.cnt = 0xFFFFFFFFu; }   /* the first key: a step right away */
             } else
                 gp_voice_on(note, vel);
         } else {
+            for (i = 0; i < nheld; i++)
+                if (held[i].note == note) held[i].phys = 0;
+            if (hold) continue;                 /* HOLD keeps it */
             held_remove(note);
             if (!arp_on) gp_voice_off(note);
         }
