@@ -162,6 +162,8 @@ How the screens are laid out:
 - **ARP blinks** while HOLD is on.
 - **PLAY** blinks on each beat while the sequencer runs, or with an incoming MIDI clock.
 - The keys light while their notes sound.
+- On the SEQ screen, **REC** glows, and lights while recording; the highest **F#** glows dimly then (it writes a
+  rest).
 
 ## 4. The sound engine
 
