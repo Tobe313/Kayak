@@ -6,7 +6,7 @@ Dinghy is meant to be copied. This is how a copy becomes your firmware, gets rel
 ## 1. Copy
 
 On GitHub: **Use this template** (or fork). Then build once before changing anything, so you know your setup
-works: `./build.sh` and `tests/run_host.sh` (see the [README](../README.md)).
+works: `./build.sh` and `tests/run_host.sh` (see the [README](../README.md#build-from-source)).
 
 ## 2. Name it
 
