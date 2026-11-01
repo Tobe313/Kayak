@@ -12,7 +12,25 @@
 #define SEQ_MAX 64u
 #define SEQ_CHORD 4u
 #define GATE_TIE 127u                           /* a gate of 127: the notes hold into the next step */
-typedef struct { uint8_t note[SEQ_CHORD], vel, gate; } step_t;   /* note 0 = none */
+typedef struct { uint8_t note[SEQ_CHORD], vel, gate, chord; } step_t;   /* note 0 = none; chord: CHORDS' (0: the
+                                                 * notes as written) */
+
+/* ---- the chords (Kayak): the notes a key plays (GLO's CHORD), a step's (the sequencer's CHORD), as semitones over
+ * the root. 0 (-): the one note */
+#define NCHORD 12u
+static const char *const CHORD_NAMES[NCHORD] = {"-", "MAJ", "MIN", "7", "MAJ7", "MIN7", "SUS2", "SUS4", "DIM", "AUG",
+                                                "POWER", "ADD9"};
+static const int8_t CHORDS[NCHORD][SEQ_CHORD] = {   /* -1: none */
+    {0, -1, -1, -1}, {0, 4, 7, -1}, {0, 3, 7, -1}, {0, 4, 7, 10}, {0, 4, 7, 11}, {0, 3, 7, 10}, {0, 2, 7, -1},
+    {0, 5, 7, -1}, {0, 3, 6, -1}, {0, 4, 8, -1}, {0, 7, 12, -1}, {0, 4, 7, 14}};
+static uint32_t chord_notes(uint32_t root, uint32_t chord, uint8_t *out)   /* root + the chord into out[4]; how many */
+{
+    uint32_t i, n = 0;
+    for (i = 0; i < SEQ_CHORD; i++) out[i] = 0;
+    for (i = 0; i < SEQ_CHORD && CHORDS[chord % NCHORD][i] >= 0; i++)
+        if (root + (uint32_t)CHORDS[chord % NCHORD][i] <= 127u) out[n++] = (uint8_t)(root + (uint32_t)CHORDS[chord % NCHORD][i]);
+    return n;
+}
 typedef struct { uint8_t len, div, swing, tempo; step_t st[SEQ_MAX]; } pattern_t;   /* swing 50..75 %, tempo BPM */
 static pattern_t pat;                           /* the main loop edits, the audio side plays */
 
@@ -22,6 +40,7 @@ static void step_clear(step_t *s)
     for (i = 0; i < SEQ_CHORD; i++) s->note[i] = 0;
     s->vel = 100;
     s->gate = 96;                               /* 76 % */
+    s->chord = 0;
 }
 static void pat_init(pattern_t *p)              /* a bar of sixteenths, empty, 120 BPM */
 {
@@ -35,8 +54,11 @@ static void pat_init(pattern_t *p)              /* a bar of sixteenths, empty, 1
 
 /* main loop -> audio side */
 static volatile uint32_t ctl_seq_run, ctl_seq_restart, ctl_tempo_ext;   /* ext: a MIDI clock's BPM, 0 none */
+static volatile int32_t ctl_transp;             /* semitones the sequence and the held arp are played up or down: the
+                                                 * keys set it while they play (dinghy.c) */
+static int32_t tr_note(uint32_t n) { return clamp((int32_t)n + ctl_transp, 1, 127); }
 /* audio side -> main loop */
-static volatile uint32_t ui_seq_step = 0xFFFFFFFFu, ui_beat;
+static volatile uint32_t ui_seq_step = 0xFFFFFFFFu, ui_beat, ui_nheld;   /* ui_nheld: the notes the arp holds */
 
 /* a quarter in frames, rounded to 48 frames (~1 ms): every step length (q / 1, 2, 3, 4, 6, 8, 12) comes out whole */
 static uint32_t quarter_len(void)
@@ -92,7 +114,7 @@ static void arp_step(void)
         arp.pos++;
     }
     idx = k % n;
-    arp.note = (uint32_t)clamp((int32_t)sorted[idx] + 12 * (int32_t)(k / n), 0, 127);
+    arp.note = (uint32_t)clamp((int32_t)sorted[idx] + 12 * (int32_t)(k / n) + ctl_transp, 0, 127);
     for (i = 0; i < n; i++)                     /* the velocity of that key */
         if (held[i].note == sorted[idx]) break;
     gp_voice_on(arp.note, i < n ? held[i].vel : 100u);
@@ -184,6 +206,7 @@ static void kayak_events(void)
             if (!arp_on) gp_voice_off(note);
         }
     }
+    ui_nheld = nheld;
 }
 
 /* ---- the sequencer (OberVave's seq_tick, one track) */
@@ -200,15 +223,16 @@ static void seq_sound(const step_t *s)
 {
     uint32_t i;
     for (i = 0; i < SEQ_CHORD && s->note[i] && sr.nsnd < SEQ_CHORD; i++) {
-        gp_voice_on(s->note[i], s->vel ? s->vel : 100u);
-        sr.snd[sr.nsnd++] = s->note[i];
+        uint32_t m = (uint32_t)tr_note(s->note[i]);
+        gp_voice_on(m, s->vel ? s->vel : 100u);
+        sr.snd[sr.nsnd++] = (uint8_t)m;
     }
 }
 static uint32_t seq_has(const step_t *s, uint32_t m)   /* the step plays note m */
 {
     uint32_t i;
     for (i = 0; i < SEQ_CHORD && s->note[i]; i++)
-        if (s->note[i] == m) return 1;
+        if ((uint32_t)tr_note(s->note[i]) == m) return 1;
     return 0;
 }
 /* a tie, note by note: what the new step plays again keeps sounding, the rest lets go, the new ones start */
@@ -222,10 +246,11 @@ static void seq_tie_into(const step_t *s, uint32_t play)
     sr.nsnd = j;
     if (!play) return;
     for (i = 0; i < SEQ_CHORD && s->note[i] && sr.nsnd < SEQ_CHORD; i++) {
-        for (j = 0; j < keep && sr.snd[j] != s->note[i]; j++) ;
+        uint32_t m = (uint32_t)tr_note(s->note[i]);
+        for (j = 0; j < keep && sr.snd[j] != m; j++) ;
         if (j < keep) continue;
-        gp_voice_on(s->note[i], s->vel ? s->vel : 100u);
-        sr.snd[sr.nsnd++] = s->note[i];
+        gp_voice_on(m, s->vel ? s->vel : 100u);
+        sr.snd[sr.nsnd++] = (uint8_t)m;
     }
 }
 static void seq_from_top(void)                  /* step 1 in this block */

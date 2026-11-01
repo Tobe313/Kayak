@@ -17,11 +17,12 @@ a square an octave under, noise), each with its own filter, ADSR and LFO; the ef
 | EDIT | GRAIN: **SRC A**, **SRC B** (TYPE TONE MOVE SEED), **GRAIN** (SIZE DENS POS SPRD), **GRAIN+** (MORPH RAND PITCH SCAN); ANALOG: **ANA OSC** (WAVE DETUN OCT PW), **ANA OSC+** (SUB NOISE) |
 | SEL | the layer's filter: **FILTER** (TYPE CUT RES DRIVE), **FILTER+** (KTRK SEM) |
 | ENV, LFO | the layer's ADSR (ATK DEC SUS REL), its LFO (RATE WAVE DEPTH DEST) |
-| GLO | **GLOBAL**: the two layers' levels (GRAIN, ANLG) and the MIDI channel (OMNI or 1..16) |
-| ARP | a short press: the arpeggiator on (lit, as it was last) or off, and its page (MODE DIV OCT GATE: UP DOWN UP/DN RANDOM PLAYED, 1/4 .. 1/32T, 1..4 octaves); held: **HOLD**, the notes stay after the keys are up until a new chord (ARP blinks) |
+| GLO | **GLOBAL**: the two layers' levels (GRAIN, ANLG), the MIDI channel (OMNI or 1..16) and **CHORD**: the chord a key plays (- the one note, MAJ MIN 7 MAJ7 MIN7 SUS2 SUS4 DIM AUG POWER ADD9), out over MIDI too |
+| ARP | a short press: the arpeggiator on (lit, as it was last) or off, and its page (MODE DIV OCT GATE: UP DOWN UP/DN RANDOM PLAYED, 1/4 .. 1/32T, 1..4 octaves); held: **HOLD**, the notes stay after the keys are up (ARP blinks); then the keys transpose them |
 | FX | a short press: the effects' pages and back: **CHORUS** (RATE DEPTH MIX), **DELAY** (TIME FDBK TONE MIX), **REVERB** (SIZE DAMP PRE MIX), **DRIVE** (TYPE AMNT TONE MIX); held: **FX MIX**, the four effects' MIX on the four knobs |
 | SELECT | the pages of the function its button opened (the button pressed again: the next one too) |
-| SEQ | the step sequencer's screen (lit): one track of up to 64 steps. The keys write the step under the cursor (keys held together: a chord of up to 4) and move on, REC writes a rest, SELECT moves the cursor, KNOB 1..4: TEMPO (40..240 BPM), LENGTH, DIV, SWING |
+| SEQ | the step sequencer's screen (lit): one track of up to 64 steps, as a list of rows. SELECT goes from row to row, the four knobs set the row's values: **PATTERN** (TEMPO 40..240 BPM, STEPS, DIV, SWING), a **step** (NOTE: under C0 a rest; CHORD: the notes again from the root; VEL; GATE: past 99 % a TIE into the next step). The keys write the row's step (keys held together, or GLO's CHORD: a chord of up to 4) and go to the next row, REC writes a rest |
+| transpose | while the sequencer runs, or the arp holds notes (HOLD), a key transposes what plays instead of playing it: from C4, +-2 octaves (HOME and SEQ show it, T+5); it goes back to 0 when both stop. On SEQ's screen the keys write steps; to hold another chord, HOLD off and on |
 | PLAY | the sequencer from the top, or stop (lit while it runs, a blink a beat); MIDI START / STOP too, and a MIDI clock sets the tempo |
 | HOME | the screen Kayak starts on, after the splash, a short press too: the layer, the wave the grains read and an oscilloscope of the output; a knob or SELECT goes back to the pages |
 | KNOB 1..4 | the page's four values, in their units (ms, grains a second, %, Hz, semitones); the faster the turn, the bigger the step (up to 8 a detent) |
