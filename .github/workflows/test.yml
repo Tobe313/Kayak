@@ -5,6 +5,8 @@ name: test
 
 on:
   workflow_dispatch:
+  push:
+    branches: ['**', '!main']   # (every push to a work branch: v0.5, ...; main gets its packages from a tag)
 
 jobs:
   firmware:
