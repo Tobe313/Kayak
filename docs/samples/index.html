@@ -16,7 +16,11 @@
 * { box-sizing: border-box; }
 body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
 main { max-width: 860px; margin: 0 auto; padding: 20px 16px 60px; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
 h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: .02em; }
+.lang { display: flex; gap: 4px; }
+.lang button { padding: 4px 10px; font-size: 13px; }
+.lang button[aria-pressed="true"] { border-color: var(--acc); color: var(--acc); }
 h1 span { color: var(--acc); }
 h2 { font-size: 17px; margin: 28px 0 10px; }
 p.lead { color: var(--dim); margin: 0 0 18px; }
@@ -54,7 +58,10 @@ a { color: var(--acc2); }
 </head>
 <body>
 <main>
-  <h1>Kayak <span>samples</span></h1>
+  <header>
+    <h1>Kayak <span>samples</span></h1>
+    <nav class="lang" aria-label="Language"><button data-lang="en">EN</button><button data-lang="fr">FR</button></nav>
+  </header>
   <p class="lead" data-t="lead">Load your own sounds into Kayak's granular engine, on an M-VAVE FM-1 connected over USB.</p>
 
   <div id="nomidi" class="panel warn" hidden data-t="nomidi">This browser cannot talk to MIDI devices. Use Chrome or Edge on a computer, or Chrome on Android (with a USB OTG cable).</div>
@@ -64,7 +71,7 @@ a { color: var(--acc2); }
       <button id="connect" class="primary" data-t="connect">Connect the FM-1</button>
       <select id="port" hidden></select>
       <button id="refresh" disabled data-t="refresh">Read the slots</button>
-      <span id="status" class="status" data-t="status0">Not connected.</span>
+      <span id="status" class="status">Not connected.</span>
     </div>
   </section>
 
@@ -86,7 +93,7 @@ a { color: var(--acc2); }
     <li data-t="h4">While a slot is written the sound stops for about half a second.</li>
     <li data-t="h5">Needs Kayak 1.2 or later. Chrome asks once to allow MIDI with “system exclusive messages”.</li>
   </ul>
-  <p class="help"><a href="https://github.com/Tobe313/Kayak">Kayak on GitHub</a> · <a href="https://github.com/Tobe313/Kayak/blob/main/docs/GUIDE.md">User guide</a></p>
+  <p class="help"><a href="https://github.com/Tobe313/Kayak">Kayak on GitHub</a> · <a href="https://github.com/Tobe313/Kayak/blob/main/docs/GUIDE.md" data-t="guide">User guide</a></p>
 </main>
 
 <script>
@@ -107,13 +114,15 @@ const T = {
     h3: "ROOT est la note du son : joué sur cette touche, il garde sa hauteur.",
     h4: "Pendant l'écriture d'un emplacement, le son s'arrête environ une demi-seconde.",
     h5: "Nécessite Kayak 1.2 ou plus. Chrome demande une fois d'autoriser le MIDI avec les « messages exclusifs système ».",
+    guide: "Guide d'utilisation",
     slot: "Emplacement", empty: "vide", erase: "Effacer", send: "Envoyer", remove: "Retirer", play: "Écouter",
     name: "Nom (8 lettres)", root: "Note (ROOT)", to: "Vers l'emplacement", start: "Début",
     connected: "Connecté", noport: "Aucun FM-1 trouvé : branchez-le, puis réessayez.", denied: "Accès MIDI refusé.",
     noanswer: "Le FM-1 ne répond pas : est-ce bien Kayak 1.2 ou plus ?", sending: "Envoi…", sent: "Envoyé dans l'emplacement",
     failed: "Échec", erased: "Effacé", decodeFail: "Fichier illisible", busy: "Un envoi est en cours.", eraseQ: "Effacer l'emplacement"
   },
-  en: {
+  en: {                                                 // (the page's own texts: read from it at load)
+    status0: "Not connected.",
     slot: "Slot", empty: "empty", erase: "Erase", send: "Send", remove: "Remove", play: "Play",
     name: "Name (8 letters)", root: "Note (ROOT)", to: "To slot", start: "Start",
     connected: "Connected", noport: "No FM-1 found: plug it in, then try again.", denied: "MIDI access refused.",
@@ -121,16 +130,33 @@ const T = {
     failed: "Failed", erased: "Erased", decodeFail: "Cannot read this file", busy: "A transfer is under way.", eraseQ: "Erase slot"
   }
 };
-const LANG = (navigator.language || "en").toLowerCase().startsWith("fr") ? "fr" : "en";
-const tr = k => (T[LANG] && T[LANG][k]) || T.en[k] || k;
-if (LANG === "fr") {
-  document.documentElement.lang = "fr";
-  document.querySelectorAll("[data-t]").forEach(e => { if (T.fr[e.dataset.t]) e.textContent = T.fr[e.dataset.t]; });
+// the language: ?lang=en / ?lang=fr, else the one chosen last (EN / FR at the top), else the browser's
+document.querySelectorAll("[data-t]").forEach(e => { T.en[e.dataset.t] = e.textContent; });
+let LANG = new URLSearchParams(location.search).get("lang");
+if (LANG !== "en" && LANG !== "fr") {
+  try { LANG = localStorage.getItem("kayak-lang"); } catch (e) { LANG = null; }
 }
+if (LANG !== "en" && LANG !== "fr") LANG = (navigator.language || "en").toLowerCase().startsWith("fr") ? "fr" : "en";
+const tr = k => (T[LANG] && T[LANG][k]) || T.en[k] || k;
+function applyLang() {
+  document.documentElement.lang = LANG;
+  document.querySelectorAll("[data-t]").forEach(e => { e.textContent = tr(e.dataset.t); });
+  document.querySelectorAll("[data-k]").forEach(e => { e.textContent = tr(e.dataset.k); });
+  document.querySelectorAll(".lang button").forEach(b => b.setAttribute("aria-pressed", b.dataset.lang === LANG));
+  if (typeof out !== "undefined" && !out) setStatus(tr("status0"));
+  if (typeof slots !== "undefined" && slots.length) drawSlots();
+  if (typeof items !== "undefined") items.forEach(it => { if (it.card) drawWave(it); });
+}
+document.querySelectorAll(".lang button").forEach(b => b.onclick = () => {
+  LANG = b.dataset.lang;
+  try { localStorage.setItem("kayak-lang", LANG); } catch (e) { }
+  applyLang();
+});
 
 const $ = id => document.getElementById(id);
 let midi = null, out = null, inp = null, nslot = 8, slots = [], busy = false, waiters = [];
 const items = [];                                       // the files added: {name, pcm Float32Array, start, card…}
+applyLang();
 
 function setStatus(text, cls) { const s = $("status"); s.textContent = text; s.className = "status" + (cls ? " " + cls : ""); }
 if (!navigator.requestMIDIAccess) { $("nomidi").hidden = false; $("connect").disabled = true; }
@@ -271,14 +297,14 @@ function makeCard(it) {
     <div class="head"><span class="file"></span><span class="status dur"></span></div>
     <canvas width="800" height="110"></canvas>
     <div class="fields">
-      <label>${tr("name")}<input type="text" maxlength="8" class="name"></label>
-      <label>${tr("root")}<select class="root"></select></label>
-      <label>${tr("to")}<select class="slot"></select></label>
+      <label><span data-k="name">${tr("name")}</span><input type="text" maxlength="8" class="name"></label>
+      <label><span data-k="root">${tr("root")}</span><select class="root"></select></label>
+      <label><span data-k="to">${tr("to")}</span><select class="slot"></select></label>
     </div>
     <div class="row" style="margin-top:10px">
-      <button class="play">${tr("play")}</button>
-      <button class="send primary">${tr("send")}</button>
-      <button class="remove">${tr("remove")}</button>
+      <button class="play" data-k="play">${tr("play")}</button>
+      <button class="send primary" data-k="send">${tr("send")}</button>
+      <button class="remove" data-k="remove">${tr("remove")}</button>
       <span class="status msg"></span>
     </div>
     <div class="bar"><i></i></div>`;
