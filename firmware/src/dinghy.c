@@ -17,8 +17,8 @@
  *   GLO        GLOBAL: the two layers' levels, the MIDI channel (OMNI or 1..16), CHORD: the chord a key plays (-: the
  *              one note, MAJ MIN 7 MAJ7 MIN7 SUS2 SUS4 DIM AUG POWER ADD9); PERFORM: what HOME's four knobs turn;
  *              VOICES: VOICE (the most notes at once, 1..8: past it a note takes the quietest voice let go, else the
- *              oldest held), AUTO (a voice stops when the audio runs late), LOAD (the audio's load, the worst of
- *              the last half second)
+ *              oldest held), AUTO (a voice stops when the audio runs late, and stays away until a calm second),
+ *              LOAD (the audio's load, the worst of the last half second), NOW (the voices a note may take now)
  *   ARP        a short press: the arpeggiator on (lit) or off, and its pages (MODE DIV OCT GATE; ARP+: RATCH, the hits
  *              in a step, CHNCE, the chance it plays); held: HOLD (the notes
  *              stay after the keys are up, ARP blinks; then the keys transpose them)
@@ -66,12 +66,13 @@ static int app_sysex(const uint8_t *p, uint32_t n);
 
 /* ---- the sound (runs in the audio ISR: keep it short, no flash, no screen) */
 /* the load (1.3): the share of its time the block took, the worst of the last moments (the main loop lets it fall);
- * over 85 % with AUTO on, a voice goes (gp_shed): the sound must not crackle */
+ * over 85 % with AUTO on, a voice goes (gp_shed) and AUTO's limit with it, until a calm second gives one back:
+ * the sound must not crackle */
 static volatile uint32_t ui_load, ctl_guard = 1;
 static void app_audio(int32_t *out, uint32_t n)
 {
 #ifndef DINGHY_HOST
-    static uint32_t wait;                       /* (blocks before the next voice may go: one every ~0.1 s) */
+    static uint32_t wait, calm;                 /* blocks before the next voice may go; blocks under 70 % */
     uint32_t t0 = fm1_ticks(), load;
 #endif
     gp_audio(out, n);
@@ -79,7 +80,10 @@ static void app_audio(int32_t *out, uint32_t n)
     load = (fm1_ticks() - t0) * 100u / (n * 5442u / 10u);   /* (24 MHz ticks: 544.2 a frame at 44.1 kHz) */
     if (load > ui_load) ui_load = load;
     if (wait) wait--;
-    else if (ctl_guard && load > 85u) { gp_shed(); wait = 16; }
+    else if (ctl_guard && load > 85u) { gp_shed(); wait = load > 100u ? 2u : 16u; }   /* (past 100 %: at once) */
+    calm = load < 70u ? calm + 1u : 0u;
+    if (!ctl_guard) gp_auto_cap = GP_NV;
+    else if (calm >= 172u && gp_auto_cap < GP_NV) { gp_auto_cap++; calm = 0; }   /* a second calm: a voice back */
 #endif
 }
 
@@ -93,6 +97,7 @@ static void app_audio(int32_t *out, uint32_t n)
 #define QPOLY 0xF8u                             /* (GLO's VOICES: the polyphony, AUTO, the load) */
 #define QGUARD 0xF7u
 #define QLOAD 0xF6u
+#define QNOW 0xF5u
 #define PQ_BAL 0xF0u                            /* (HOME's knobs only: the two levels as a balance, both cutoffs) */
 #define PQ_CUTS 0xF1u
 enum { P_SRCA, P_SRCB, P_GRAIN, P_GRAIN2, P_FILT, P_FILT2, P_ENV, P_LFO, P_OSC, P_OSC2, P_AFILT, P_AFILT2, P_AENV,
@@ -112,7 +117,7 @@ static const page_t PAGES[NPAGE] = {
     {"FX REVERB", {GQ_RSIZE, GQ_RDAMP, GQ_RPRE, GQ_RMIX}}, {"FX DRIVE", {GQ_VTYPE, GQ_VAMT, GQ_VTONE, GQ_VMIX}},
     {"FX MIX", {GQ_PMIX, GQ_DMIX, GQ_RMIX, GQ_VMIX}}, {"GLOBAL", {GQ_GLEV, GQ_ALEV, QCH, QCHORD}},
     {"ARP+", {GQ_ARATCH, GQ_ACHANCE, QX, QX}}, {"PERFORM", {QP1, QP1 + 1u, QP1 + 2u, QP1 + 3u}},
-    {"VOICES", {QPOLY, QGUARD, QLOAD, QX}}};
+    {"VOICES", {QPOLY, QGUARD, QLOAD, QNOW}}};
 /* HOME's knobs: what each turns, picked on PERFORM (GLO's second page) */
 static const struct { uint8_t q; const char *name; } PERF[] = {
     {GQ_MORPH, "MORPH"}, {GQ_POS, "POS"}, {GQ_SIZE, "SIZE"}, {GQ_DENS, "DENS"}, {GQ_SPRD, "SPRD"}, {GQ_RAND, "RAND"},
@@ -328,7 +333,8 @@ static void draw_scope(const uint8_t *perf, uint32_t y)
 }
 
 static void draw_cells(uint32_t pg, uint32_t ch, uint32_t chord, const uint8_t *perf, uint32_t poly, uint32_t guard,
-                       uint32_t load)       /* ch: the MIDI channel (QCH), chord: QCHORD's, perf: PERFORM's; VOICES */
+                       uint32_t load, uint32_t now)   /* ch: the MIDI channel (QCH), chord: QCHORD's, perf: PERFORM's;
+                                                 * VOICES (now: the voices a note may take now) */
 {
     static const char *const KNOB[4] = {"KNOB1", "KNOB2", "KNOB3", "KNOB4"};
     uint32_t c;
@@ -360,6 +366,11 @@ static void draw_cells(uint32_t pg, uint32_t ch, uint32_t chord, const uint8_t *
             *p++ = '%';
             *p = 0;
             w = (int32_t)(load > 100u ? 100u : load) * 48 / 100;
+        } else if (q == QNOW) {                 /* (read only) the voices now: VOICE, or less while AUTO holds some */
+            name = "NOW";
+            gq_put_dec(&p, now);
+            *p = 0;
+            w = (int32_t)now * 48 / (int32_t)GP_NV;
         } else if (q >= QP1 && q < QP1 + 4u) {  /* what HOME's knob turns */
             name = KNOB[q - QP1];
             gq_put_str(&p, PERF[perf[q - QP1] % NPERF].name);
@@ -1126,7 +1137,7 @@ static void app_main(void)
                             t_change = fm1_ms;
                             continue;
                         }
-                        if (q == QLOAD) continue;
+                        if (q == QLOAD || q == QNOW) continue;
                         if (q >= QP1 && q < QP1 + 4u) {   /* PERFORM: what HOME's knob turns, round the list */
                             uint8_t *pp = &set.perf[q - QP1];
                             *pp = (uint8_t)((uint32_t)((int32_t)(*pp % NPERF) + e % (int32_t)NPERF + (int32_t)NPERF) % NPERF);
@@ -1251,11 +1262,13 @@ static void app_main(void)
                     uint32_t q = PAGES[pg].q[k];
                     sum = sum * 131u + (q == QX ? 0u : q == QCH ? set.ch : q == QCHORD ? set.chord
                                         : q >= QP1 && q < QP1 + 4u ? set.perf[q - QP1] : q == QPOLY ? set.poly
-                                        : q == QGUARD ? set.guard : q == QLOAD ? load_shown : (uint8_t)gp_p[q]);
+                                        : q == QGUARD ? set.guard : q == QLOAD ? load_shown
+                                        : q == QNOW ? (set.poly < gp_auto_cap ? set.poly : gp_auto_cap) : (uint8_t)gp_p[q]);
                 }
                 if (sum != cells_drawn) {
                     cells_drawn = sum;
-                    draw_cells(pg, set.ch, set.chord, set.perf, set.poly, set.guard, load_shown);
+                    draw_cells(pg, set.ch, set.chord, set.perf, set.poly, set.guard, load_shown,
+                               set.poly < gp_auto_cap ? set.poly : gp_auto_cap);
                 }
                 if ((st = (uint32_t)(oct + 2) | (uint32_t)set.ch << 4 | (uint32_t)(ctl_transp + 32) << 9) != status_drawn) { status_drawn = st; draw_status(oct, set.ch, ctl_transp); }
             }

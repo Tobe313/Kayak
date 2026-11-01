@@ -5,7 +5,7 @@
  * All lines are int16 in one .pool buffer; the signals are Q15. Integers only. Kayak's changes: the knobs are its
  * own (fx_block takes them as values 0..127), the delay's time is in milliseconds (20 .. 550: Kayak has no tempo) and its line 557 ms a side
  * (OberVave's 743 ms with the grains' buffers would not fit the pool), the send of every effect is the dry sound. */
-#define REV_DIV 1u
+#define REV_DIV 2u                               /* (1.3) the reverb at half the rate, as OberVave's: half its time */
 #define RVL(x) ((uint32_t)((x) * 44100u / 29761u / REV_DIV))   /* the paper's 29761 Hz lengths at our rate */
 #define DLY_MAX 24576u                          /* a side of the delay: 557 ms */
 #define REV_PRE_N (8192u / REV_DIV)             /* up to 120 ms of pre-delay */
@@ -22,7 +22,7 @@
 #define RV_AP4 RVL(2656)
 #define RV_D4 RVL(3163)
 #define REV_N (REV_PRE_N + RV_IN1 + RV_IN2 + RV_IN3 + RV_IN4 + RV_AP1 + 16u + RV_D1 + RV_AP2 + RV_D2 + RV_AP3 + 16u + RV_D3 + RV_AP4 + RV_D4)
-#define RV_BW 16700                             /* the input's one-pole: ~5 kHz */
+#define RV_BW (REV_DIV == 1u ? 16700 : 24900)   /* the input's one-pole: ~5 kHz at either rate */
 #define FX_MEM_N (2u * DLY_MAX + REV_N)
 
 typedef struct { int16_t *b; uint32_t len, w; } line_t;   /* w: where the next sample goes */
@@ -65,19 +65,19 @@ static inline int32_t tri_q(uint32_t ph)        /* a triangle -2048..2047 (so Q8
 }
 
 /* ---- the phaser (Kayak): two chains of PH_N first-order allpasses, left and right, their corners swept together by
- * a triangle LFO a quarter turn apart (160 Hz .. 6 octaves up by DEPTH), the last stage fed back into the first
- * (FDBK); its return added to the dry sound makes the moving notches */
+ * a triangle LFO a quarter turn apart (160 Hz .. 5 kHz by DEPTH), the last stage fed back into the first (FDBK); its
+ * return added to the dry sound makes the moving notches. It runs at half the rate (1.3: half its time) */
 #define PH_N 6u
 static uint32_t pow2_q16(int32_t d16);          /* (grain.c) */
 static int32_t ph_x1[2][PH_N], ph_y1[2][PH_N], ph_last[2], ph_a[2];
 static uint32_t ph_ph, ph_inc;
-static int32_t ph_depth_k, ph_fb, ph_mix;
+static int32_t ph_depth_k, ph_fb, ph_mix, ph_out[2];
 static int32_t ph_coef(uint32_t ph)             /* the allpasses' coefficient, Q15, for the LFO at ph */
 {
     int32_t d16 = ((tri_q(ph) + 2048) * ph_depth_k) >> 12;   /* 1/16 semitones over 160 Hz */
     uint32_t fc = (160u * pow2_q16(d16)) >> 16, w, tn;
-    if (fc > 8000u) fc = 8000u;
-    w = fc * 4669u / 1000u;                     /* pi fc / fs, Q16 */
+    if (fc > 5000u) fc = 5000u;
+    w = fc * 9338u / 1000u;                     /* pi fc / (fs / 2), Q16 */
     tn = w + (((w * w) >> 16) * w >> 16) / 3u;  /* ~tan */
     return (int32_t)(((65536u - tn) << 15) / (65536u + tn));
 }
@@ -132,7 +132,7 @@ static void fx_block(int32_t ph_rate, int32_t ph_depth, int32_t ph_fbk, int32_t 
     t = dly_tone; dly_tone_k = clamp(((t * t) >> 6) + 8, 8, 256);
     d = rev_size; rev_decay = 12000 + ((d * d * 19500) >> 14);   /* 0.37 .. 0.96: the top is a near-freeze */
     d = rev_damp; rev_damp_k = 32768 - d * d * 2;   /* the one-pole's k at the half rate */
-    {                                           /* the same corner at the full rate: k' = 1 - sqrt(1 - k) */
+    if (REV_DIV == 1u) {                        /* the same corner at the full rate: k' = 1 - sqrt(1 - k) */
         uint32_t x = (uint32_t)(32768 - rev_damp_k) << 15, r = 0, bit = 1u << 15;
         for (; bit; bit >>= 1)
             if ((r + bit) * (r + bit) <= x) r += bit;
@@ -245,14 +245,23 @@ static void fx_process(int32_t *out, const int32_t *cs, const int32_t *ds, const
     }
     for (i = 0; i < n; i++) {
         int32_t l = out[2u * i], r = out[2u * i + 1u];
-        if (pm) {                               /* the phaser: the corners again every 16 frames */
-            if (!(i & 15u)) {
-                ph_a[0] = ph_coef(ph_ph);
-                ph_a[1] = ph_coef(ph_ph + 0x40000000u);
+        if (pm) {                               /* the phaser: a step every other frame (the frame on it: halfway from
+                                                 * the last), the corners again every 16 frames */
+            int32_t pl = ph_out[0], pr = ph_out[1];
+            if (!(i & 1u)) {
+                int32_t x = (cs[i] + cs[i + 1u < n ? i + 1u : i]) >> 1;
+                if (!(i & 15u)) {
+                    ph_a[0] = ph_coef(ph_ph);
+                    ph_a[1] = ph_coef(ph_ph + 0x40000000u);
+                }
+                ph_ph += ph_inc * 2u;
+                ph_out[0] = ph_run(0, x);
+                ph_out[1] = ph_run(1, x);
+                pl = (pl + ph_out[0]) >> 1;
+                pr = (pr + ph_out[1]) >> 1;
             }
-            ph_ph += ph_inc;
-            l += (ph_run(0, cs[i]) * pm) >> 8;
-            r += (ph_run(1, cs[i]) * pm) >> 8;
+            l += (pl * pm) >> 8;
+            r += (pr * pm) >> 8;
         }
         if (do_dly) {                           /* ping-pong: the input enters left, the feedback crosses */
             int32_t wl, wr;
@@ -267,10 +276,15 @@ static void fx_process(int32_t *out, const int32_t *cs, const int32_t *ds, const
             l += (wl * dm) >> 8;
             r += (wr * dm) >> 8;
         }
-        if (do_rev) {
-            rev_tick(rs[i]);
-            l += (rv_yl * rm) >> 8;
-            r += (rv_yr * rm) >> 8;
+        if (do_rev) {                           /* the reverb: a step every other frame, the frame on it halfway */
+            int32_t yl = rv_yl, yr = rv_yr;
+            if (!(i & 1u)) {
+                rev_tick((rs[i] + rs[i + 1u < n ? i + 1u : i]) >> 1);
+                yl = (yl + rv_yl) >> 1;
+                yr = (yr + rv_yr) >> 1;
+            }
+            l += (yl * rm) >> 8;
+            r += (yr * rm) >> 8;
         }
         out[2u * i] = sat16(l);
         out[2u * i + 1u] = sat16(r);

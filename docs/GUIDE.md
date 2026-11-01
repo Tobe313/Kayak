@@ -318,15 +318,16 @@ sources).
 
 ### 4.10 Polyphony and load (VOICES)
 
-VOICES is GLO's third page. Kayak plays up to 8 notes at once, each with both layers; a chord on a heavy sound (many
+VOICES is GLO's third page (GLO pressed three times). Kayak plays up to 8 notes at once, each with both layers; a chord on a heavy sound (many
 grains, both layers, the effects) can need more time than the chip has, and the sound crackles. These three cells
 keep it in hand:
 
 | Knob | Range | What it does |
 | --- | --- | --- |
 | VOICE | 1–8 | The most notes at once. Past it a new note **steals** a voice: the quietest one already let go, else the oldest one held |
-| AUTO | ON, OFF | ON: when a block of sound takes over 85 % of its time, the quietest voice (a released one first) stops at once, at most one every 0.1 s, before the sound crackles |
+| AUTO | ON, OFF | ON: when a block of sound takes over 85 % of its time, the quietest voice (a released one first) stops at once (one every 0.1 s, at once past 100 %), before the sound crackles; new notes then steal instead of taking that voice back, until a calm second (under 70 %) gives it back |
 | LOAD | (read only) | How much of its time the sound takes, the worst of the last half second. Under ~70 % is comfortable |
+| NOW | (read only) | The voices a new note may take now: VOICE, or fewer while AUTO holds some back |
 
 VOICE and AUTO belong to the device (kept after power-off, the same for every sound). If a sound crackles: watch
 LOAD while you play it, lower VOICE (6 or 4), or make the sound lighter (fewer grains: DENS, SIZE; the analog layer
@@ -346,7 +347,7 @@ A soft limiter at the output keeps loud chords from clipping.
 
 | RATE | DEPTH | FDBK | MIX |
 | --- | --- | --- | --- |
-| Speed of the sweep, 0.05 – 4 Hz | Width of the sweep, up to 6 octaves above 160 Hz | Feedback: sharper, more resonant notches | Amount: at 100 % the deepest notches |
+| Speed of the sweep, 0.05 – 4 Hz | Width of the sweep, from 160 Hz up to 5 kHz | Feedback: sharper, more resonant notches | Amount: at 100 % the deepest notches |
 
 The phaser is stereo: two chains of six allpass stages, swept by the same triangle LFO a quarter turn apart on the
 left and the right. It replaced OberVave's chorus in 1.1; a sound saved before keeps its RATE, DEPTH and MIX values,
@@ -574,7 +575,7 @@ Presets 1–8 are ChoralRoot's GRAIN sounds, with Kayak's filter, envelope, LFO 
 
 | Version | Changes |
 | --- | --- |
-| **1.3** | GLO › VOICES: the polyphony (VOICE 1–8, note stealing past it), AUTO (a voice stops when the audio runs late, so it does not crackle) and LOAD (the audio's load). |
+| **1.3** | GLO › VOICES: the polyphony (VOICE 1–8, note stealing past it), AUTO (a voice stops when the audio runs late, so it does not crackle), LOAD (the audio's load) and NOW. The reverb and the phaser run at half the rate: the effects take about half the time. |
 | **1.2** | Your own samples: a web page ([Kayak samples](https://tobe313.github.io/Kayak/samples/)) sends up to 8 samples of 0.74 s into the FM-1 over USB-MIDI; SRC A / B TYPE SMP1 … SMP8 plays them. |
 | **1.1** | OberVave's chorus replaced by a stereo phaser (FX PHASER: RATE DEPTH FDBK MIX). |
 | **1.0** | HOME's two views, MAIN and WAVES (the waves alone on the whole screen), turned by HOME again or SELECT. SELECT no longer leaves HOME. |
