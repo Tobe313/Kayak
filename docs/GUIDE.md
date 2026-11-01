@@ -82,6 +82,8 @@ Kayak is a fork of [Dinghy](https://github.com/zvenson/dinghy) (zvenson), the mi
 
 - **Leaving Kayak:** install another firmware, or the official one, from the Hub. Kayak answers the Hub's updater like
   every firmware there.
+- **Your own samples:** the [Kayak samples](https://tobe313.github.io/Kayak/samples/) page sends them over USB,
+  no installation needed ([4.9](#49-your-own-samples-smp)).
 - **If the FM-1 will not start:** hold **OCT-** while switching it on. This starts the USB rescue (only the updater,
   no sound), and you can install a working firmware from there.
 - **Release packages are signed:** each one is built from source on GitHub and carries a build attestation from
@@ -533,10 +535,12 @@ Presets 1–8 are ChoralRoot's GRAIN sounds, with Kayak's filter, envelope, LFO 
 ### 8.3 What is kept after power-off
 
 - **Settings:** the current sound, the octave, the MIDI channel, the chord, the PERFORM choices, the function and
-  the layer. They are saved
-  2 s after a change, while nothing is playing, as a journal in flash so the LEDs do not flicker.
+  the layer. They are saved 2 s after a change, while nothing is playing, as a journal in flash so the LEDs do not
+  flicker.
 - **Sequence:** saved while the sequencer is stopped.
 - **User presets:** saved when you save them.
+- **Samples:** written when the web page sends them ([4.9](#49-your-own-samples-smp)). They stay through Kayak's
+  updates; another firmware installed meanwhile may use the same part of the flash and erase them.
 
 ## 9. MIDI and the SMK-37
 
