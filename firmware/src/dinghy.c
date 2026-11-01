@@ -299,8 +299,11 @@ static void draw_home_line(uint32_t run, uint32_t bpm, uint32_t hold)
     gq_put_str(&p, ARP_NAMES[clamp(gp_p[GQ_AMODE], 0, NARPMODE - 1)]);
     if (hold) gq_put_str(&p, " HOLD");
     gq_put_str(&p, run ? "  PLAY" : "  STOP");
-    if (p - s <= 16) { *p++ = ' '; gq_put_dec(&p, bpm); }
-    if (p - s <= 20) gq_put_str(&p, " BPM");
+    if (p - s <= 16) {                          /* (the tempo, then its unit, only where they fit) */
+        *p++ = ' ';
+        gq_put_dec(&p, bpm);
+        if (p - s <= 20) gq_put_str(&p, " BPM");
+    }
     *p = 0;
     draw_text_box(0, 204, 240, &FONT_S, s, C_OFF, 1);
 }
