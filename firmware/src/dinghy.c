@@ -5,12 +5,12 @@
  * sequencer.
  *
  *   keys       play the grains, 8 voices; the notes go out over USB-MIDI too, on the MIDI channel
- *   SELECT     the page: SRC A, SRC B (TYPE TONE MOTION SEED), GRAIN (SIZE DENS POS SPRD),
+ *   SELECT     the page: SRC A, SRC B (TYPE TONE MOVE SEED), GRAIN (SIZE DENS POS SPRD),
  *              GRAIN+ (MORPH RAND PITCH SCAN), FILTER (TYPE CUT RES DRIVE: OberVave's), FILTER+ (KTRK SEM),
- *              ENV (ATK DEC SUS REL), LFO (RATE WAVE DEPTH DEST); ARP (MODE DIV OCTAVES GATE) by the ARP button only
+ *              ENV (ATK DEC SUS REL), LFO (RATE WAVE DEPTH DEST); ARP (MODE DIV OCT GATE) by the ARP button only
  *   KNOB 1..4  the page's four values; the faster the turn, the bigger the step
- *   FX         the effects' pages and back (lit there): CHORUS (RATE DEPTH MIX), DELAY (TIME FEEDBK TONE MIX),
- *              REVERB (SIZE DAMP PRE MIX), DRIVE (TYPE AMOUNT TONE MIX): OberVave's; BASS (VOLUME DETUNE OCTAVE): an
+ *   FX         the effects' pages and back (lit there): CHORUS (RATE DEPTH MIX), DELAY (TIME FDBK TONE MIX),
+ *              REVERB (SIZE DAMP PRE MIX), DRIVE (TYPE AMNT TONE MIX): OberVave's; BASS (LEVEL DETUN OCT): an
  *              analog bass under the grains, two detuned saws through the filter and the effects
  *   EDIT       SRC A, SRC B, GRAIN, GRAIN+ (where it was left; pressed again: the next of them)
  *   SEL        FILTER, FILTER+ (the same way)

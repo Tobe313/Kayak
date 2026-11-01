@@ -6,12 +6,12 @@ Package identity `FM-1_987` (SMK-37: `SMK-37 Pro_987`, `SMK-37 Elite_987`, `MKE-
 Kayak is a granular synth: the GRAIN engine of [ChoralRoot FM-1](https://github.com/Quixotic7/ChoralRootFM1)
 (its [docs/GRAIN.md](https://github.com/Quixotic7/ChoralRootFM1/blob/main/docs/GRAIN.md)), cut down to one part.
 Two sources, A and B, are rendered by a small synth from four knobs each (no samples): TYPE (PLUCK DRONE BELL BREATH
-CHIRP SWEEP VOWEL METAL), TONE, MOTION, SEED. Up to 16 grains, shared by 8 voices, read A and B mixed by MORPH.
+CHIRP SWEEP VOWEL METAL), TONE, MOVE (the motion), SEED. Up to 16 grains, shared by 8 voices, read A and B mixed by MORPH.
 
 | control | |
 | --- | --- |
-| SELECT | the page: **SRC A**, **SRC B** (TYPE TONE MOTION SEED), **GRAIN** (SIZE DENS POS SPRD), **GRAIN+** (MORPH RAND PITCH SCAN), **FILTER** (TYPE CUT RES DRIVE), **FILTER+** (KTRK SEM), **ENV** (ATK DEC SUS REL: an ADSR), **LFO** (RATE WAVE DEPTH DEST); the **ARP** page (MODE DIV OCTAVES GATE) opens with the ARP button only |
-| FX | the effects' pages and back (FX lit there): **CHORUS** (RATE DEPTH MIX), **DELAY** (TIME FEEDBK TONE MIX), **REVERB** (SIZE DAMP PRE MIX), **DRIVE** (TYPE AMOUNT TONE MIX), **BASS** (VOLUME DETUNE OCTAVE: an analog bass under the grains, two detuned saws through the filter, the envelope and the effects); SELECT moves among them |
+| SELECT | the page: **SRC A**, **SRC B** (TYPE TONE MOVE SEED), **GRAIN** (SIZE DENS POS SPRD), **GRAIN+** (MORPH RAND PITCH SCAN), **FILTER** (TYPE CUT RES DRIVE), **FILTER+** (KTRK SEM), **ENV** (ATK DEC SUS REL: an ADSR), **LFO** (RATE WAVE DEPTH DEST); the **ARP** page (MODE DIV OCT GATE) opens with the ARP button only |
+| FX | the effects' pages and back (FX lit there): **CHORUS** (RATE DEPTH MIX), **DELAY** (TIME FDBK TONE MIX), **REVERB** (SIZE DAMP PRE MIX), **DRIVE** (TYPE AMNT TONE MIX), **BASS** (LEVEL DETUN OCT: an analog bass under the grains, two detuned saws through the filter, the envelope and the effects); SELECT moves among them |
 | EDIT | SRC A, SRC B, GRAIN, GRAIN+ (where it was left; pressed again: the next of them) |
 | SEL | FILTER, FILTER+ (the same way) |
 | ENV, LFO | straight to their page |
@@ -28,8 +28,8 @@ CHIRP SWEEP VOWEL METAL), TONE, MOTION, SEED. Up to 16 grains, shared by 8 voice
 The filter and the effects are [OberVave](https://github.com/zvenson/obervave)'s (zvenson): its voice filter (an
 input stage driven into a tanh, then LP12 HP12 BP12 NOTCH and SEM (LP .. notch .. HP by the SEM knob) from a
 saturating SVF, or LP24 from a ladder; KTRK makes the cutoff follow the note), and its stereo chorus, ping-pong delay
-(20 .. 550 ms here), Dattorro plate reverb and parallel drive (OVERDRIVE DIST FUZZ CRUSH).
-The LFO (SINE TRI SAW SQUARE S&H, 0.05 .. 20 Hz) moves one of MORPH POS SIZE DENS SPRD PITCH CUT.
+(20 .. 550 ms here), Dattorro plate reverb and parallel drive (OVER DIST FUZZ CRUSH).
+The LFO (SINE TRI SAW SQR S&H, 0.05 .. 20 Hz) moves one of MORPH POS SIZE DENS SPRD PITCH CUT.
 The arpeggiator and the step sequencer are OberVave's too, cut down to one sound and one track (`kayak_seq.h`); the arp
 follows the sequencer's grid while it runs. The buttons that do something glow, and light fully while it is on. The sound being
 played (marked `*` once changed), the octave, the channel and the page are kept in flash.

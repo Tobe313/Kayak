@@ -54,19 +54,20 @@ enum {
 #define GQ_N_V04 48u                            /* the values a sound had in 0.4 */
 #define GQ_N_V041 50u                           /* .. and in 0.41 */
 /* how a value reads on the screen (gq_text) */
+/* (labels and values of five characters at most: six of FONT_S fill a 60 px cell, they would touch the next) */
 enum { GF_INT, GF_TYPE, GF_PCT, GF_SIGNED, GF_SEMI, GF_SIZE, GF_DENS, GF_CUT, GF_TIME, GF_LFOHZ, GF_LWAVE, GF_LDEST,
        GF_FTYPE, GF_VTYPE, GF_DLYMS, GF_NONE, GF_ARP, GF_DIV, GF_CENTS, GF_OCT };
 #define GL_NWAVE 5u
-static const char *const GL_WAVE_NAMES[GL_NWAVE] = {"SINE", "TRI", "SAW", "SQUARE", "S&H"};
+static const char *const GL_WAVE_NAMES[GL_NWAVE] = {"SINE", "TRI", "SAW", "SQR", "S&H"};
 enum { GD_MORPH, GD_POS, GD_SIZE, GD_DENS, GD_SPRD, GD_PITCH, GD_CUT, GD_N };
 static const char *const GL_DEST_NAMES[GD_N] = {"MORPH", "POS", "SIZE", "DENS", "SPRD", "PITCH", "CUT"};
 static const char *const FTYPE_NAMES[NFTYPE] = {"LP12", "HP12", "BP12", "NOTCH", "LP24", "SEM"};
-static const char *const VTYPE_NAMES[NDV] = {"OVERDR", "DIST", "FUZZ", "CRUSH"};
+static const char *const VTYPE_NAMES[NDV] = {"OVER", "DIST", "FUZZ", "CRUSH"};
 typedef struct { const char *name; int8_t min, max, def; uint8_t fmt; } gq_desc_t;
 static const gq_desc_t GQ[GQ_N] = {
-    {"TYPE", 0, GS_NTYPE - 1, GT_DRONE, GF_TYPE}, {"TONE", 0, 127, 64, GF_INT}, {"MOTION", 0, 127, 64, GF_INT},
+    {"TYPE", 0, GS_NTYPE - 1, GT_DRONE, GF_TYPE}, {"TONE", 0, 127, 64, GF_INT}, {"MOVE", 0, 127, 64, GF_INT},
     {"SEED", 0, 127, 0, GF_INT},
-    {"TYPE", 0, GS_NTYPE - 1, GT_BELL, GF_TYPE}, {"TONE", 0, 127, 64, GF_INT}, {"MOTION", 0, 127, 64, GF_INT},
+    {"TYPE", 0, GS_NTYPE - 1, GT_BELL, GF_TYPE}, {"TONE", 0, 127, 64, GF_INT}, {"MOVE", 0, 127, 64, GF_INT},
     {"SEED", 0, 127, 0, GF_INT},
     {"SIZE", 0, 127, 92, GF_SIZE}, {"DENS", 0, 127, 88, GF_DENS}, {"POS", 0, 127, 50, GF_PCT}, {"SPRD", 0, 127, 40, GF_PCT},
     {"MORPH", 0, 127, 40, GF_PCT}, {"RAND", 0, 127, 14, GF_PCT}, {"PITCH", -24, 24, 0, GF_SEMI},
@@ -76,15 +77,15 @@ static const gq_desc_t GQ[GQ_N] = {
     {"KTRK", 0, 127, 64, GF_PCT}, {"SEM", 0, 127, 64, GF_PCT}, {"ATK", 0, 127, 30, GF_TIME}, {"REL", 0, 127, 84, GF_TIME},
     {"RATE", 0, 127, 40, GF_LFOHZ}, {"WAVE", 0, GL_NWAVE - 1, 0, GF_LWAVE}, {"DEPTH", 0, 127, 0, GF_PCT},
     {"DEST", 0, GD_N - 1, GD_MORPH, GF_LDEST},
-    {"MODE", 0, NARPMODE - 1, A_OFF, GF_ARP}, {"DIV", 0, NDIV - 1, D_16, GF_DIV}, {"OCTAVE", 1, 4, 1, GF_INT},
+    {"MODE", 0, NARPMODE - 1, A_OFF, GF_ARP}, {"DIV", 0, NDIV - 1, D_16, GF_DIV}, {"OCT", 1, 4, 1, GF_INT},
     {"GATE", 0, 127, 64, GF_PCT},
     {"RATE", 0, 127, 30, GF_PCT}, {"DEPTH", 0, 127, 40, GF_PCT}, {"MIX", 0, 127, 0, GF_PCT}, {0, 0, 0, 0, GF_NONE},
-    {"TIME", 0, 127, 80, GF_DLYMS}, {"FEEDBK", 0, 127, 50, GF_PCT}, {"TONE", 0, 127, 70, GF_PCT}, {"MIX", 0, 127, 0, GF_PCT},
+    {"TIME", 0, 127, 80, GF_DLYMS}, {"FDBK", 0, 127, 50, GF_PCT}, {"TONE", 0, 127, 70, GF_PCT}, {"MIX", 0, 127, 0, GF_PCT},
     {"SIZE", 0, 127, 100, GF_PCT}, {"DAMP", 0, 127, 75, GF_PCT}, {"PRE", 0, 127, 30, GF_PCT}, {"MIX", 0, 127, 0, GF_PCT},
-    {"TYPE", 0, NDV - 1, DV_OVERDRIVE, GF_VTYPE}, {"AMOUNT", 0, 127, 60, GF_PCT}, {"TONE", 0, 127, 90, GF_PCT},
+    {"TYPE", 0, NDV - 1, DV_OVERDRIVE, GF_VTYPE}, {"AMNT", 0, 127, 60, GF_PCT}, {"TONE", 0, 127, 90, GF_PCT},
     {"MIX", 0, 127, 0, GF_PCT},
     {"DEC", 0, 127, 64, GF_TIME}, {"SUS", 0, 127, 127, GF_PCT},
-    {"VOLUME", 0, 127, 0, GF_PCT}, {"DETUNE", 0, 127, 40, GF_CENTS}, {"OCTAVE", -3, 1, -1, GF_OCT}, {0, 0, 0, 0, GF_NONE},
+    {"LEVEL", 0, 127, 0, GF_PCT}, {"DETUN", 0, 127, 40, GF_CENTS}, {"OCT", -3, 1, -1, GF_OCT}, {0, 0, 0, 0, GF_NONE},
 };
 static volatile int8_t gp_p[GQ_N];
 static void gp_defaults(void)
@@ -161,7 +162,7 @@ static void gq_text(uint32_t q, int32_t v, char *s)
     case GF_SEMI:
         if (v) *p++ = v < 0 ? '-' : '+';
         gq_put_dec(&p, (uint32_t)(v < 0 ? -v : v));
-        if (GQ[q].fmt == GF_SEMI) gq_put_str(&p, " st");
+        if (GQ[q].fmt == GF_SEMI) gq_put_str(&p, "st");
         break;
     case GF_SIZE: gq_put_dec(&p, (10u * pow2_q16(v * 8)) >> 16); gq_put_str(&p, "ms"); break;   /* 441 samples: 10 ms */
     case GF_DENS:                               /* grains a second: 65536 / 2^(-DENS x 10 / 192), in tenths below 10 */
@@ -175,7 +176,7 @@ static void gq_text(uint32_t q, int32_t v, char *s)
     case GF_ARP: gq_put_str(&p, ARP_NAMES[clamp(v, 0, NARPMODE - 1)]); break;
     case GF_DIV: gq_put_str(&p, DIV_NAMES[clamp(v, 0, NDIV - 1)]); break;
     case GF_CENTS: gq_put_dec(&p, (uint32_t)(v * 30 + 63) / 127u); gq_put_str(&p, "ct"); break;   /* +-, the two saws apart */
-    case GF_OCT: if (v) *p++ = v < 0 ? '-' : '+'; gq_put_dec(&p, (uint32_t)(v < 0 ? -v : v)); gq_put_str(&p, " oct"); break;
+    case GF_OCT: if (v) *p++ = v < 0 ? '-' : '+'; gq_put_dec(&p, (uint32_t)(v < 0 ? -v : v)); gq_put_str(&p, "oct"); break;
     case GF_DLYMS: gq_put_dec(&p, gp_dly_ms(v)); gq_put_str(&p, "ms"); break;
     case GF_CUT:                                /* OberVave's: MIDI note v + 8, 13 Hz .. 19.9 kHz */
         u = (440u * pow2_q16((v - 61) * 16)) >> 16;
