@@ -7,27 +7,30 @@
  *   keys       play the sound, 8 voices of two layers each: the grains and an analog synth; the notes go out over
  *              USB-MIDI too, on the MIDI channel
  *   ALGORITHM  the layer the sound's functions show: GRAIN (turned left) or ANALOG (turned right)
- *   EDIT       GRAIN: SRC A, SRC B (TYPE TONE MOVE SEED), GRAIN (SIZE DENS POS SPRD), GRAIN+ (MORPH RAND PITCH SCAN);
- *              ANALOG: ANA OSC (WAVE DETUN OCT PW), ANA OSC+ (SUB NOISE)
- *   SEL        the layer's filter (OberVave's): FILTER (TYPE CUT RES DRIVE), FILTER+ (KTRK SEM)
+ *   EDIT       GRAIN: GRN SRC A, GRN SRC B (TYPE TONE MOVE SEED), GRN GRAIN (SIZE DENS POS SPRD), GRN GRAIN+ (MORPH
+ *              RAND PITCH SCAN); ANALOG: ANA OSC (WAVE DETUN OCT PW), ANA OSC+ (SUB NOISE). The band shows the layer's
+ *              wave in front, the other layer's dim behind it
+ *   SEL        the layer's filter (OberVave's): GRN FILT / ANA FILT (TYPE CUT RES DRIVE), + (KTRK SEM)
  *   ENV LFO    the layer's ADSR (ATK DEC SUS REL), its LFO (RATE WAVE DEPTH DEST)
  *   GLO        GLOBAL: the two layers' levels, the MIDI channel (OMNI or 1..16), CHORD: the chord a key plays (-: the
- *              one note, MAJ MIN 7 MAJ7 MIN7 SUS2 SUS4 DIM AUG POWER ADD9)
- *   ARP        a short press: the arpeggiator on (lit) or off, and its page (MODE DIV OCT GATE); held: HOLD (the notes
+ *              one note, MAJ MIN 7 MAJ7 MIN7 SUS2 SUS4 DIM AUG POWER ADD9); PERFORM: what HOME's four knobs turn
+ *   ARP        a short press: the arpeggiator on (lit) or off, and its pages (MODE DIV OCT GATE; ARP+: RATCH, the hits
+ *              in a step, CHNCE, the chance it plays); held: HOLD (the notes
  *              stay after the keys are up, ARP blinks; then the keys transpose them)
  *   FX         a short press: the effects' pages and back (CHORUS, DELAY, REVERB, DRIVE: OberVave's, on the whole
  *              sound); held: FX MIX, the four effects' MIX on the four knobs
  *   SELECT     the pages of the function its button opened (a button pressed again: the next one too)
  *   KNOB 1..4  the page's four values; the faster the turn, the bigger the step
  *   SEQ        the step sequencer's screen (lit), a list of rows: SELECT goes from row to row, the knobs set the
- *              row's values: PATTERN (TEMPO STEPS DIV SWING), a step (NOTE CHORD VEL GATE: a note under C0 is a
- *              rest, a gate past 99 % a tie). The keys write the row's step (a chord: keys held together, or GLO's
- *              CHORD) and go to the next row, REC writes a rest
- *   transpose  while the sequencer runs, or the arp holds notes (HOLD), a key (on the screens but SEQ's) transposes
+ *              row's values: PATTERN (TEMPO STEPS DIV SWING; SEQ+: ARP, the steps play the arpeggiator), a step
+ *              (NOTE CHORD VEL GATE: a note under C0 is a rest, a gate past 99 % a tie; SEQ+: RATCH CHNCE). SEQ
+ *              again: the other page. REC (lit): the keys write the row's step (a chord: keys held together, or
+ *              GLO's CHORD) and go to the next row, the top C# (dimly lit) writes a rest
+ *   transpose  while the sequencer runs, or the arp holds notes (HOLD), a key (but while REC writes) transposes
  *              what plays, from C4, instead of playing: +-2 octaves
  *   PLAY       the sequencer runs (lit, a blink a beat) or stops; MIDI START / STOP too, a MIDI clock sets the tempo
- *   HOME       the screen after the splash, a short press too: the layer, the wave and an oscilloscope of the output;
- *              a knob or SELECT goes back to the pages
+ *   HOME       the screen after the splash, a short press too: the layers' waves, an oscilloscope of the output, over
+ *              it the four performance knobs (GLO's PERFORM), which turn there; SELECT goes back to the pages
  *   PRESETS    the sound: the factory presets, then the user presets saved; MIDI program change too
  *   SAVE       save the sound: PRESETS picks the user slot (1..16), SAVE again writes it, HOME cancels
  *   OCT- OCT+  the octave
@@ -35,7 +38,7 @@
  *   SMK-37     the keys with velocity, the outer keys too, the pads (white keys F3..G5, lit while they sound), the
  *              pitch wheel bends +-2 semitones
  * The buttons that do something glow; they light fully while what they do is on. The sound being played, the octave,
- * the channel, the function and the layer are kept in flash (2 s after a change, when silent), the sequence too (when
+ * the channel, the chord, PERFORM, the function and the layer are kept in flash (2 s after a change, when silent), the sequence too (when
  * stopped).
  *
  * Rules of the road (the chip has no FPU and no libgcc): integers only, no float, no 64-bit division.

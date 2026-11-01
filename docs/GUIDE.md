@@ -1,7 +1,7 @@
 # Kayak user guide
 
 <!-- Keep this line in step with the release: the guide describes this version. -->
-> **Applies to Kayak 0.8** (package identity `FM-1_987`) · [Releases](https://github.com/Tobe313/Kayak/releases) ·
+> **Applies to Kayak 0.9** (package identity `FM-1_987`) · [Releases](https://github.com/Tobe313/Kayak/releases) ·
 > [Version history](#10-version-history)
 
 ## Summary
@@ -14,8 +14,10 @@ Kayak is a custom firmware for the **M-VAVE FM-1** (and builds for the M-Vave SM
 - **ANALOG layer**: two detuned oscillators (SAW, SQR, TRI), a sub-oscillator and noise.
 - Each layer has its own **filter**, **ADSR envelope** and **LFO**.
 - The **effects** (chorus, delay, reverb, drive) work on the whole sound.
-- The **arpeggiator** (with HOLD), the **step sequencer** (64 steps, chords), **chords on one key** and **live
-  transposition** all come from or build on [OberVave](https://github.com/zvenson/obervave).
+- The **arpeggiator** (with HOLD, ratchet and chance), the **step sequencer** (64 steps, chords, ratchet, chance; it
+  can play the arp), **chords on one key** and **live transposition** all come from or build on
+  [OberVave](https://github.com/zvenson/obervave).
+- **HOME** shows both layers and the output, with four **performance knobs** you choose.
 - There are 12 factory presets and 16 user slots. Kayak plays USB-MIDI and TRS MIDI in, follows MIDI clock, and
   sends notes out over USB-MIDI.
 
@@ -40,6 +42,7 @@ Kayak is a fork of [Dinghy](https://github.com/zvenson/dinghy) (zvenson), the mi
    - 4.5 [Envelope (ENV)](#45-envelope-env)
    - 4.6 [LFO (LFO)](#46-lfo-lfo)
    - 4.7 [Global (GLO)](#47-global-glo)
+   - 4.8 [Performance knobs (PERFORM)](#48-performance-knobs-perform)
 5. [Effects (FX)](#5-effects-fx)
    - 5.1 [Chorus](#51-chorus)
    - 5.2 [Delay](#52-delay)
@@ -55,8 +58,9 @@ Kayak is a fork of [Dinghy](https://github.com/zvenson/dinghy) (zvenson), the mi
    - 7.1 [The SEQ screen](#71-the-seq-screen)
    - 7.2 [PATTERN row](#72-pattern-row)
    - 7.3 [Step rows](#73-step-rows)
-   - 7.4 [Recording with the keys](#74-recording-with-the-keys)
-   - 7.5 [Playing, MIDI clock and transport](#75-playing-midi-clock-and-transport)
+   - 7.4 [Second page (SEQ+): ratchet, chance, arp](#74-second-page-seq-ratchet-chance-arp)
+   - 7.5 [Recording with the keys (REC)](#75-recording-with-the-keys-rec)
+   - 7.6 [Playing, MIDI clock and transport](#76-playing-midi-clock-and-transport)
 8. [Presets and memory](#8-presets-and-memory)
    - 8.1 [Factory presets](#81-factory-presets)
    - 8.2 [Saving a user preset](#82-saving-a-user-preset)
@@ -93,12 +97,12 @@ Installing firmware is at your own risk.
 | **EDIT** | Sources and grains, or the analog oscillators ([4.1](#41-grain-layer-sources-edit)–[4.3](#43-analog-layer-oscillators-edit)) |
 | **SEL** | The layer's filter ([4.4](#44-filter-sel)) |
 | **ENV** / **LFO** | The layer's envelope and LFO ([4.5](#45-envelope-env), [4.6](#46-lfo-lfo)) |
-| **GLO** | Layer levels, MIDI channel, chord type ([4.7](#47-global-glo)) |
+| **GLO** | Layer levels, MIDI channel, chord type ([4.7](#47-global-glo)); HOME's knobs ([4.8](#48-performance-knobs-perform)) |
 | **ARP** | Short press: arpeggiator on or off. Long press: HOLD ([6.3](#63-arpeggiator-and-hold-arp)) |
 | **FX** | Short press: effect pages. Long press: FX MIX ([5](#5-effects-fx)) |
-| **SEQ** / **PLAY** / **REC** | Step sequencer ([7](#7-step-sequencer-seq)) |
+| **SEQ** / **PLAY** / **REC** | Step sequencer; REC arms the keys to record ([7](#7-step-sequencer-seq)) |
 | **SELECT** | The pages of the current function, or the rows of the sequencer |
-| **KNOB 1..4** | The four values on screen |
+| **KNOB 1..4** | The four values on screen; on HOME, the performance knobs |
 | **HOME** | The HOME screen ([3.1](#31-home)); cancels a save |
 | **PRESETS** / **SAVE** | Choose a sound, save it ([8](#8-presets-and-memory)) |
 | **OCT- / OCT+** | Octave, ±2 |
@@ -112,11 +116,12 @@ After the 1.5-second splash, Kayak starts on HOME. A short press on **HOME** als
 
 - the preset name, with `*` once you have changed it;
 - the current layer (GRAIN or ANALOG);
-- the material the grains read, with every grain that sounds shown as a moving line;
-- an oscilloscope of the output;
+- both layers' waves, the current layer in front and the other dim behind it (see [3.2](#32-pages-functions-and-layers));
+- an oscilloscope of the output, with the four **performance knobs** over it: their names above, their values below;
 - a status line with the arp mode, HOLD, the sequencer (PLAY or STOP), the transposition (`T+5`) and the tempo.
 
-Turning a knob or SELECT takes you back to the pages.
+On HOME the four knobs turn the values chosen on [PERFORM](#48-performance-knobs-perform) and stay on HOME. SELECT
+takes you back to the pages.
 
 ### 3.2 Pages, functions and layers
 
@@ -129,18 +134,23 @@ Each function button opens its own **pages**, four values per page:
 
 | Function | GRAIN layer pages | ANALOG layer pages |
 | --- | --- | --- |
-| EDIT | SRC A, SRC B, GRAIN, GRAIN+ | ANA OSC, ANA OSC+ |
-| SEL | FILTER, FILTER+ | ANA FILT, ANA FILT+ |
-| ENV | ENV | ANA ENV |
-| LFO | LFO | ANA LFO |
-| ARP | ARP | ARP |
+| EDIT | GRN SRC A, GRN SRC B, GRN GRAIN, GRN GRAIN+ | ANA OSC, ANA OSC+ |
+| SEL | GRN FILT, GRN FILT+ | ANA FILT, ANA FILT+ |
+| ENV | GRN ENV | ANA ENV |
+| LFO | GRN LFO | ANA LFO |
+| ARP | ARP, ARP+ | ARP, ARP+ |
 | FX | FX CHORUS, FX DELAY, FX REVERB, FX DRIVE | (same) |
 | FX (held) | FX MIX | (same) |
-| GLO | GLOBAL | GLOBAL |
+| GLO | GLOBAL, PERFORM | GLOBAL, PERFORM |
 
 How the screens are laid out:
 
-- Each page shows its name, a band showing the source material (with POS and SPRD), and four cells (name, value, bar).
+- Each page shows its name, a band with both layers' waves, and four cells (name, value, bar).
+- The band puts the **current layer in front** and the other one dim behind it:
+  - GRAIN layer: the material the grains read (A on GRN SRC A, B on GRN SRC B, the mix elsewhere), POS and SPRD, and
+    every grain that sounds as a moving line; the analog oscillators as a dim orange line behind;
+  - ANALOG layer: two periods of the oscillators as they sound (WAVE, PW, DETUN, SUB, NOISE) in orange; the grains'
+    material dim grey behind.
 - The bottom lines show the octave, the MIDI channel, the transposition, MIDI input activity and the MIDI clock.
 - The knobs speed up: a slow turn moves one step, a fast one up to eight steps per detent.
 - Values that are lists (waves, types, modes) wrap around.
@@ -160,7 +170,7 @@ use the GRAIN layer alone, except the last four ([8.1](#81-factory-presets)).
 
 ### 4.1 GRAIN layer: sources (EDIT)
 
-**SRC A** and **SRC B** synthesise the two buffers the grains read. When you turn a source knob, the buffer is
+**GRN SRC A** and **GRN SRC B** synthesise the two buffers the grains read. When you turn a source knob, the buffer is
 rendered again in the background, and the new material replaces the old one once it is complete.
 
 | Knob | Range | What it does |
@@ -174,11 +184,11 @@ rendered again in the background, and the new material replaces the old one once
 
 | Page | Knob | Range | What it does |
 | --- | --- | --- | --- |
-| GRAIN | SIZE | 10 ms – ~390 ms | Length of each grain |
+| GRN GRAIN | SIZE | 10 ms – ~390 ms | Length of each grain |
 | | DENS | ~1 – ~98 grains/s | How often grains start |
 | | POS | 0–100 % | Where in the buffer grains start |
 | | SPRD | 0–100 % | How widely start positions scatter around POS |
-| GRAIN+ | MORPH | 0–100 % | Mix of source A (0) and source B (100) |
+| GRN GRAIN+ | MORPH | 0–100 % | Mix of source A (0) and source B (100) |
 | | RAND | 0–100 % | Random variation between grains |
 | | PITCH | ±24 semitones | Grain pitch offset |
 | | SCAN | −64 … +63 | Moves POS through the buffer over time (direction and speed) |
@@ -200,20 +210,20 @@ Up to 16 grains are shared by the 8 voices. See ChoralRoot's
 ### 4.4 Filter (SEL)
 
 This is OberVave's voice filter: an input stage driven into a tanh curve, then a saturating state-variable filter or
-a ladder. Each layer has its own filter (FILTER / ANA FILT).
+a ladder. Each layer has its own filter (GRN FILT / ANA FILT).
 
 | Page | Knob | Range | What it does |
 | --- | --- | --- | --- |
-| FILTER | TYPE | LP12, HP12, BP12, NOTCH, LP24 (ladder), SEM | Filter type |
+| FILT | TYPE | LP12, HP12, BP12, NOTCH, LP24 (ladder), SEM | Filter type |
 | | CUT | 13 Hz – 19.9 kHz | Cutoff |
 | | RES | 0–100 % | Resonance |
 | | DRIVE | 0–100 % | Input drive |
-| FILTER+ | KTRK | 0–100 % | Key tracking: how much the cutoff follows the note |
+| FILT+ | KTRK | 0–100 % | Key tracking: how much the cutoff follows the note |
 | | SEM | 0–100 % | For the SEM type: morphs low-pass → notch → high-pass |
 
 ### 4.5 Envelope (ENV)
 
-An ADSR envelope on the layer's level. ENV is for the GRAIN layer, ANA ENV for the ANALOG layer.
+An ADSR envelope on the layer's level. GRN ENV is for the GRAIN layer, ANA ENV for the ANALOG layer.
 
 | Knob | Range |
 | --- | --- |
@@ -224,7 +234,7 @@ An ADSR envelope on the layer's level. ENV is for the GRAIN layer, ANA ENV for t
 
 ### 4.6 LFO (LFO)
 
-One LFO per layer.
+One LFO per layer: GRN LFO and ANA LFO.
 
 | Knob | Range | What it does |
 | --- | --- | --- |
@@ -243,6 +253,22 @@ One LFO per layer.
 | CHORD | −, MAJ, MIN, 7, MAJ7, MIN7, SUS2, SUS4, DIM, AUG, POWER, ADD9 | The chord one key plays ([6.2](#62-chords-on-one-key)) |
 
 MIDI and CHORD belong to the device, not to the sound: they stay the same when you change preset.
+
+### 4.8 Performance knobs (PERFORM)
+
+PERFORM is GLO's second page (press GLO again, or turn SELECT). Its four knobs, KNOB1 to KNOB4, choose what each knob
+turns on [HOME](#31-home). The choice belongs to the device and is kept after power-off; the values themselves are
+part of the sound.
+
+| Group | Choices |
+| --- | --- |
+| Grains | MORPH, POS, SIZE, DENS, SPRD, RAND, PITCH, SCAN |
+| GRAIN layer | G.CUT, G.RES, G.ATK, G.REL, G.LFO (LFO depth), G.LEV (level) |
+| ANALOG layer | A.CUT, A.RES, A.DET, A.PW, A.SUB, A.ATK, A.REL, A.LFO (LFO depth), A.LEV (level) |
+| Effects | CHOR, DELAY, REVB, DRIVE (their MIX), D.FB (delay feedback), V.AMT (drive amount) |
+| Arpeggiator | GATE, RATCH, CHNCE |
+
+The defaults are MORPH, G.CUT, DELAY and REVB.
 
 ## 5. Effects (FX)
 
@@ -319,14 +345,19 @@ SMK-37's pads and outer keys, and the chord notes go out over MIDI too.
 
 ### 6.3 Arpeggiator and HOLD (ARP)
 
-**Short press on ARP:** turns the arpeggiator on (with the last mode used) or off, and opens its page.
+**Short press on ARP:** turns the arpeggiator on (with the last mode used) or off, and opens its pages. SELECT turns
+to the second page, ARP+.
 
-| Knob | Range |
-| --- | --- |
-| MODE | OFF, UP, DOWN, UP/DN, RANDOM, PLAYED |
-| DIV | 1/4, 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/32T |
-| OCT | 1–4 octaves |
-| GATE | 0–100 % of the step |
+| Page | Knob | Range | What it does |
+| --- | --- | --- | --- |
+| ARP | MODE | OFF, UP, DOWN, UP/DN, RANDOM, PLAYED | Order of the notes |
+| | DIV | 1/4, 1/8, 1/8T, 1/16, 1/16T, 1/32, 1/32T | Step length |
+| | OCT | 1–4 octaves | Range |
+| | GATE | 0–100 % | Note length within the step (or within each ratchet hit) |
+| ARP+ | RATCH | 1–4 | Ratchet: each step is cut into this many repeated hits of its note |
+| | CHNCE | 0–100 % | Chance: how likely each step is to sound (it still moves on when silent) |
+
+The arpeggiator also plays the sequencer's steps when PATTERN's ARP is on ([7.4](#74-second-page-seq-ratchet-chance-arp)).
 
 **Long press on ARP (½ s):** turns **HOLD** on or off, and ARP blinks while it is on.
 
@@ -351,7 +382,7 @@ How it works:
 - The shift stays after you release the key, and appears as `T+2` on HOME, on the page status line and on the SEQ
   screen.
 - It goes back to 0 when the sequencer stops and the arp no longer holds notes.
-- On the SEQ screen the keys always write steps; they never transpose there.
+- While REC is on (SEQ screen), the keys write steps; they never transpose then.
 
 ## 7. Step sequencer (SEQ)
 
@@ -360,15 +391,18 @@ a tie).
 
 ### 7.1 The SEQ screen
 
-Press **SEQ** to open the sequencer screen (SEQ lights); press it again to leave.
+Press **SEQ** to open the sequencer screen (SEQ lights). Press it again to switch between its two pages, SEQ and
+**SEQ+**. Leave with HOME or a function button (EDIT, SEL, ENV, LFO, GLO, ARP, FX).
 
 - The screen is a **list of rows**: the PATTERN row first, then one row per step.
 - **SELECT** moves from row to row, and the four knobs set the selected row's values.
 - Three rows are visible: the selected one (highlighted, with an orange edge) and its neighbours.
 - A step row shows its number, its notes (`C4 MAJ7`, `C4 +2` for keys held together, `REST`), then its velocity and
-  gate.
+  gate (on SEQ+: its ratchet and chance, `x2 50%`).
 - An orange mark shows the step being played.
-- The bottom lines show PLAY with the current step (or STOP), the tempo, the transposition, and the selected row.
+- The title shows `SEQ` or `SEQ+`, and `REC` in orange while recording.
+- The bottom lines show PLAY with the current step (or STOP), the tempo, the transposition, the selected row, and
+  what REC does (`REC: RECORD`, or `TOP C#: REST` while recording).
 
 ### 7.2 PATTERN row
 
@@ -385,17 +419,31 @@ Press **SEQ** to open the sequencer screen (SEQ lights); press it again to leave
 | VEL | Velocity, 1–127 |
 | GATE | Note length within the step. Past 99 % it becomes **TIE**: the notes hold into the next step. |
 
-### 7.4 Recording with the keys
+### 7.4 Second page (SEQ+): ratchet, chance, arp
 
-On the SEQ screen:
+| Row | Knob | Range | What it does |
+| --- | --- | --- | --- |
+| PATTERN | ARP | OFF, ON | ON: the steps' notes (a chord as well as a single note) play the **arpeggiator**, as if their keys were held, while the arp is on (ARP lit). The arp follows its own MODE, DIV, OCT and GATE during each step's gate. |
+| Step | RATCH | x1–x4 | Ratchet: the step is cut into this many repeated hits, each held for the step's GATE of its part |
+| Step | CHNCE | 0–100 % | Chance: how likely the step is to sound each time round |
+
+### 7.5 Recording with the keys (REC)
+
+On the SEQ screen, **REC** arms recording (REC lights, the title shows `REC`). Without it, the keys play normally
+(or transpose while the sequencer runs).
+
+While REC is on:
 
 - A key writes into the selected step and plays the note.
 - Keys held together make a chord of up to 4 notes. With a CHORD set on GLOBAL, one key writes that chord.
 - When all keys are released, the selection moves to the next row.
-- **REC** writes a rest and moves on.
-- The step keeps its gate when you write over it.
+- The **highest C#** of the keyboard (C#5 at octave 0, whatever the octave) writes a **rest** and moves on. It glows
+  dimly while REC is on.
+- The step keeps its gate, ratchet and chance when you write over it.
 
-### 7.5 Playing, MIDI clock and transport
+REC turns off when you leave the SEQ screen.
+
+### 7.6 Playing, MIDI clock and transport
 
 - **PLAY** starts the sequence from the top, or stops it.
 - MIDI **START / CONTINUE / STOP** do the same.
@@ -434,7 +482,8 @@ Presets 1–8 are ChoralRoot's GRAIN sounds, with Kayak's filter, envelope, LFO 
 
 ### 8.3 What is kept after power-off
 
-- **Settings:** the current sound, the octave, the MIDI channel, the chord, the function and the layer. They are saved
+- **Settings:** the current sound, the octave, the MIDI channel, the chord, the PERFORM choices, the function and
+  the layer. They are saved
   2 s after a change, while nothing is playing, as a journal in flash so the LEDs do not flicker.
 - **Sequence:** saved while the sequencer is stopped.
 - **User presets:** saved when you save them.
@@ -454,6 +503,7 @@ Presets 1–8 are ChoralRoot's GRAIN sounds, with Kayak's filter, envelope, LFO 
 
 | Version | Changes |
 | --- | --- |
+| **0.9** | REC arms the sequencer's recording; the highest C# writes a rest. Ratchet and chance for the arp (ARP+) and the steps (SEQ+). The sequencer can play the arpeggiator (PATTERN › ARP). GRAIN pages named GRN. Both layers drawn, the current one in front. HOME: four performance knobs chosen on GLO › PERFORM, shown over the scope. User presets, settings and the sequence of 0.8 are kept. |
 | **0.8** | Chords on one key (GLO › CHORD). Keys transpose the running sequence and the held arp. Sequencer redesigned as rows (PATTERN; per step NOTE, CHORD, VEL, GATE). Soft limiter on the output. |
 | **0.7** | Two layers per voice (GRAIN and ANALOG) chosen with ALGORITHM, each with its own filter, ADSR and LFO. Effects on the whole sound. HOLD (long press ARP). FX MIX (long press FX). SELECT moves through the pages of the current function. 4 new presets (SUB PAD, ANA BASS, POLY SAW, PLUCK ARP). |
 | **0.6** | Package identity `FM-1_987`, signed releases for the Firmware Hub. Larger UI font, new splash. No LED jump on page buttons (settings saved as a journal). |
@@ -476,7 +526,7 @@ The full release notes and packages are on the [releases page](https://github.co
 | Update loader screen idea | [Skiff](https://github.com/illuminus5/skiff) | illuminus5 |
 | Signed builds | [zvenson/fm1-build](https://github.com/zvenson/fm1-build), [FM-1 Firmware Hub](https://thefirmwarehub.com) | zvenson |
 | Font | Terminus (SIL OFL 1.1) | Dimitar Zhekov |
-| Kayak: the fork, two layers, chords, transposition, sequencer UI | [Tobe313/Kayak](https://github.com/Tobe313/Kayak) | Tobe313 |
+| Kayak: the fork, two layers, chords, transposition, sequencer UI, performance knobs | [Tobe313/Kayak](https://github.com/Tobe313/Kayak) | Tobe313 |
 
 The full licensing is in [LICENSING.md](../LICENSING.md). Kayak is GPL-3.0-only. "M-VAVE", "FM-1" and "SMK-37" belong
 to their owners; Kayak is not made or endorsed by them.
