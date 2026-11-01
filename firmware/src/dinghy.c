@@ -343,6 +343,73 @@ static void led_fn(uint32_t id, uint32_t on)
 
 /* ---- MIDI in: from the main loop, and from app_idle while the screen draws (idle_ok) */
 static struct { uint8_t oct, ch, page, cur, mod; int8_t p[GQ_N]; } set;   /* what survives a power-off */
+
+/* ---- the settings as a journal in their sector: each save goes after the last one ([KLOG][length][crc32] then the
+ * bytes, a word-aligned record), and the sector is erased only when it is full (~50 saves). A save then programs
+ * ~70 bytes, the interrupts off for well under 1 ms, instead of erasing 4 KiB (~50 ms: the LED scan stops and the
+ * buttons' LEDs jump). The last record whose CRC holds is the settings; a sector in platform.c's format (before
+ * 0.6) is read by settings_load, the first journal save erases it */
+#define LOG_MAGIC 0x474F4C4Bu                   /* "KLOG" */
+#ifdef DINGHY_HOST
+static int log_load(void *p, uint32_t n) { return settings_load(p, n); }   /* (the host's store: in RAM) */
+static int log_save(const void *p, uint32_t n) { return settings_save(p, n); }
+#else
+static uint32_t log_len(uint32_t n) { return (12u + n + 3u) & ~3u; }
+/* the journal's records: the last valid one of length n into p (0: there is one); *end: where the next one goes
+ * (0x1000: none fits or the sector is not a journal) */
+static int log_scan(void *p, uint32_t n, uint32_t *end)
+{
+    static uint8_t buf[SECTOR_MAX];
+    uint32_t off = 0, h[3];
+    int found = -1;
+    *end = 0x1000u;
+    if (!flash_ok || n > sizeof buf)
+        return -1;
+    while (off + 12u <= 0x1000u && !st_read(SETTINGS_AT + off, h, sizeof h)) {
+        if (h[0] == 0xFFFFFFFFu) { *end = off; break; }   /* the erased rest: the next record goes here */
+        if (h[0] != LOG_MAGIC || h[1] > SECTOR_MAX || off + log_len(h[1]) > 0x1000u)
+            break;                              /* not a journal (platform.c's format), or a broken one: erase first */
+        if (h[1] == n && !st_read(SETTINGS_AT + off + 12u, buf, n) && crc32(buf, n) == h[2]) {
+            uint32_t i;
+            for (i = 0; i < n; i++) ((uint8_t *)p)[i] = buf[i];
+            found = 0;
+        }
+        off += log_len(h[1]);
+    }
+    return found;
+}
+static int log_load(void *p, uint32_t n)
+{
+    uint32_t end;
+    return log_scan(p, n, &end);
+}
+static int log_save(const void *p, uint32_t n)
+{
+    static uint8_t rec[SECTOR_MAX + 12u], chk[64];
+    uint32_t end, len = log_len(n), i, took, h[3] = {LOG_MAGIC, n, 0};
+    if (!flash_ok || n > SECTOR_MAX)
+        return -1;
+    log_scan(rec, n, &end);                     /* (rec: a scratch here) */
+    for (i = end; i + 64u <= 0x1000u && i < end + len; i += 64u) {   /* the place must still be erased */
+        uint32_t j;
+        if (st_read(SETTINGS_AT + i, chk, 64)) return -1;
+        for (j = 0; j < 64u; j++) if (chk[j] != 0xFFu) end = 0x1000u;
+    }
+    if (end + len > 0x1000u) {                  /* full (or not a journal yet): erase, the one LED blink in ~50 saves */
+        fm1_wdt_feed();
+#if !BOARD_SMK37
+        fm1__led_lines(0);
+#endif
+        if (fl_erase4k(SETTINGS_AT, &took)) return -1;
+        end = 0;
+    }
+    h[2] = crc32((const uint8_t *)p, n);
+    for (i = 0; i < 12u; i++) rec[i] = ((const uint8_t *)h)[i];
+    for (i = 0; i < n; i++) rec[12u + i] = ((const uint8_t *)p)[i];
+    for (; i + 12u < len; i++) rec[12u + i] = 0xFFu;
+    return fl_write(SETTINGS_AT + end, rec, len);   /* (a cut write: its CRC fails, the next save goes after it) */
+}
+#endif
 static uint32_t idle_ok, midi_src, clk_n, clk_t0, clk_bpm, clk_run, clk_beat_ms, pc_want = ~0u;
 
 static void midi_in(void)
@@ -409,7 +476,7 @@ static void app_main(void)
     }
     if (blob_load(1, &pat, sizeof pat) || pat.len < 1u || pat.len > SEQ_MAX || pat.div >= NDIV)   /* the sequence */
         pat_init(&pat);
-    k = !settings_load(&set, sizeof set);
+    k = !log_load(&set, sizeof set) || !settings_load(&set, sizeof set);   /* the journal, else 0.5's sector */
     if (!k) {                                   /* 0.41's or 0.4's settings: their sound again (0.4: the pages from the first) */
         static uint8_t raw[5u + GQ_N];
         uint32_t o, j;
@@ -712,7 +779,7 @@ static void app_main(void)
 
         if (dirty && gp_quiet() && !grs.busy && fm1_ms - t_change > 2000u) {   /* 2 s after the change, when silent */
             for (k = 0; k < GQ_N; k++) set.p[k] = gp_p[k];
-            settings_save(&set, sizeof set);
+            log_save(&set, sizeof set);
             dirty = 0;
         }
         if (pat_dirty && !ctl_seq_run && !step_in && gp_quiet() && fm1_ms - t_change > 2000u) {   /* the sequence */
