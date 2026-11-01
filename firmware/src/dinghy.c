@@ -18,8 +18,8 @@
  *   ARP        a short press: the arpeggiator on (lit) or off, and its pages (MODE DIV OCT GATE; ARP+: RATCH, the hits
  *              in a step, CHNCE, the chance it plays); held: HOLD (the notes
  *              stay after the keys are up, ARP blinks; then the keys transpose them)
- *   FX         a short press: the effects' pages and back (CHORUS, DELAY, REVERB, DRIVE: OberVave's, on the whole
- *              sound); held: FX MIX, the four effects' MIX on the four knobs
+ *   FX         a short press: the effects' pages and back (PHASER: RATE DEPTH FDBK MIX, Kayak's stereo phaser;
+ *              DELAY, REVERB, DRIVE: OberVave's; on the whole sound); held: FX MIX, the four effects' MIX
  *   SELECT     the pages of the function its button opened (a button pressed again: the next one too)
  *   KNOB 1..4  the page's four values; the faster the turn, the bigger the step
  *   SEQ        the step sequencer's screen (lit), a list of rows: SELECT goes from row to row, the knobs set the
@@ -84,9 +84,9 @@ static const page_t PAGES[NPAGE] = {
     {"ANA FILT", {GQ_AFTYPE, GQ_ACUT, GQ_ARES, GQ_AFDRIVE}}, {"ANA FILT+", {GQ_AKTRK, GQ_AFMORPH, QX, QX}},
     {"ANA ENV", {GQ_AATK, GQ_ADEC, GQ_ASUS, GQ_AREL}}, {"ANA LFO", {GQ_ALRATE, GQ_ALWAVE, GQ_ALDEPTH, GQ_ALDEST}},
     {"ARP", {GQ_AMODE, GQ_ADIV, GQ_AOCT, GQ_AGATE}},
-    {"FX CHORUS", {GQ_CRATE, GQ_CDEPTH, GQ_CMIX, QX}}, {"FX DELAY", {GQ_DTIME, GQ_DFB, GQ_DTONE, GQ_DMIX}},
+    {"FX PHASER", {GQ_PRATE, GQ_PDEPTH, GQ_PFB, GQ_PMIX}}, {"FX DELAY", {GQ_DTIME, GQ_DFB, GQ_DTONE, GQ_DMIX}},
     {"FX REVERB", {GQ_RSIZE, GQ_RDAMP, GQ_RPRE, GQ_RMIX}}, {"FX DRIVE", {GQ_VTYPE, GQ_VAMT, GQ_VTONE, GQ_VMIX}},
-    {"FX MIX", {GQ_CMIX, GQ_DMIX, GQ_RMIX, GQ_VMIX}}, {"GLOBAL", {GQ_GLEV, GQ_ALEV, QCH, QCHORD}},
+    {"FX MIX", {GQ_PMIX, GQ_DMIX, GQ_RMIX, GQ_VMIX}}, {"GLOBAL", {GQ_GLEV, GQ_ALEV, QCH, QCHORD}},
     {"ARP+", {GQ_ARATCH, GQ_ACHANCE, QX, QX}}, {"PERFORM", {QP1, QP1 + 1u, QP1 + 2u, QP1 + 3u}}};
 /* HOME's knobs: what each turns, picked on PERFORM (GLO's second page) */
 static const struct { uint8_t q; const char *name; } PERF[] = {
@@ -94,9 +94,9 @@ static const struct { uint8_t q; const char *name; } PERF[] = {
     {GQ_PITCH, "PITCH"}, {GQ_SCAN, "SCAN"}, {GQ_CUT, "G.CUT"}, {GQ_RES, "G.RES"}, {GQ_ATK, "G.ATK"},
     {GQ_REL, "G.REL"}, {GQ_LDEPTH, "G.LFO"}, {GQ_ACUT, "A.CUT"}, {GQ_ARES, "A.RES"}, {GQ_ODET, "A.DET"},
     {GQ_OPW, "A.PW"}, {GQ_OSUB, "A.SUB"}, {GQ_AATK, "A.ATK"}, {GQ_AREL, "A.REL"}, {GQ_ALDEPTH, "A.LFO"},
-    {GQ_GLEV, "G.LEV"}, {GQ_ALEV, "A.LEV"}, {GQ_CMIX, "CHOR"}, {GQ_DMIX, "DELAY"}, {GQ_DFB, "D.FB"},
+    {GQ_GLEV, "G.LEV"}, {GQ_ALEV, "A.LEV"}, {GQ_PMIX, "PHASE"}, {GQ_DMIX, "DELAY"}, {GQ_DFB, "D.FB"},
     {GQ_RMIX, "REVB"}, {GQ_VMIX, "DRIVE"}, {GQ_VAMT, "V.AMT"}, {GQ_AGATE, "GATE"}, {GQ_ARATCH, "RATCH"},
-    {GQ_ACHANCE, "CHNCE"}, {PQ_BAL, "BAL"}, {PQ_CUTS, "CUTS"}};
+    {GQ_ACHANCE, "CHNCE"}, {PQ_BAL, "BAL"}, {PQ_CUTS, "CUTS"}, {GQ_PFB, "P.FB"}};
 #define NPERF (sizeof PERF / sizeof PERF[0])
 static const uint8_t PERF_DEF[4] = {32, 33, 25, 24};   /* BAL, CUTS, D.FB, DELAY */
 /* BAL: GRAIN and ANLG as one, 0 the grains alone .. 64 both full .. 127 the analog alone */
@@ -129,7 +129,7 @@ static void perf_text(uint32_t i, char *s)      /* a performance knob's value: B
     else
         gq_text(q, gp_p[q], s);
 }
-static const char *const MIX_NAMES[4] = {"CHOR", "DELAY", "REVB", "DRIVE"};   /* (FX MIX: four MIX told apart) */
+static const char *const MIX_NAMES[4] = {"PHASE", "DELAY", "REVB", "DRIVE"};   /* (FX MIX: four MIX told apart) */
 enum { FN_EDIT, FN_SEL, FN_ENV, FN_LFO, FN_ARP, FN_FX, FN_MIX, FN_GLO, NFN };
 static const uint8_t FN_PAGE[NFN][2][5] = {    /* each function's pages: the grain layer's, the analog's; 0xFF ends */
     {{P_SRCA, P_SRCB, P_GRAIN, P_GRAIN2, 0xFF}, {P_OSC, P_OSC2, 0xFF}},
@@ -774,15 +774,19 @@ static void app_main(void)
     smk_pw_t wheel = {0};
     smk_pad_events = 1;                         /* the pads as events (smk_pad_take): they play here, lit while they sound */
 #endif
-    if (blob_load(0, &user, sizeof user)) {     /* the user presets (0.8's: without the knobs 0.9 added) */
+    if (blob_load(0, &user, sizeof user)) {     /* the user presets (0.8's, 0.9's: without the knobs added since) */
+        static struct { uint8_t used[NUSER]; int8_t p[NUSER][GQ_N_V09]; } u9;
         static struct { uint8_t used[NUSER]; int8_t p[NUSER][GQ_N_V08]; } u8;
-        uint32_t j;
+        uint32_t j, nq = 0;
+        const uint8_t *used = 0;
+        const int8_t *pp = 0;
         for (k = 0; k < NUSER; k++) user.used[k] = 0;
-        if (!blob_load(0, &u8, sizeof u8))
-            for (k = 0; k < NUSER; k++) {
-                user.used[k] = u8.used[k];
-                for (j = 0; j < GQ_N; j++) user.p[k][j] = j < GQ_N_V08 ? u8.p[k][j] : GQ[j].def;
-            }
+        if (!blob_load(0, &u9, sizeof u9)) nq = GQ_N_V09, used = u9.used, pp = &u9.p[0][0];
+        else if (!blob_load(0, &u8, sizeof u8)) nq = GQ_N_V08, used = u8.used, pp = &u8.p[0][0];
+        for (k = 0; k < NUSER && nq; k++) {
+            user.used[k] = used[k];
+            for (j = 0; j < GQ_N; j++) user.p[k][j] = j < nq ? pp[k * nq + j] : GQ[j].def;
+        }
     }
     if (blob_load(1, &pat, sizeof pat) || pat.len < 1u || pat.len > SEQ_MAX || pat.div >= NDIV) {   /* the sequence */
         static uint8_t p8[4u + SEQ_MAX * 7u];   /* (0.8's: steps of 7 bytes, no RATCH CHANCE, no ARP) */
@@ -797,9 +801,17 @@ static void app_main(void)
             }
         }
     }
-    {                                           /* the settings (0.8's: no PERFORM, fewer knobs) */
+    {                                           /* the settings (0.9's: fewer knobs; 0.8's: no PERFORM either) */
+        static struct { uint8_t oct, ch, fn, layer, cur, mod, chord, perf[4]; int8_t p[GQ_N_V09]; } s9;
         static struct { uint8_t oct, ch, fn, layer, cur, mod, chord; int8_t p[GQ_N_V08]; } s8;
         int ok = !log_load(&set, sizeof set);
+        if (!ok && !log_load(&s9, sizeof s9)) {
+            set.oct = s9.oct, set.ch = s9.ch, set.fn = s9.fn, set.layer = s9.layer, set.cur = s9.cur;
+            set.mod = s9.mod, set.chord = s9.chord;
+            for (k = 0; k < 4u; k++) set.perf[k] = s9.perf[k];
+            for (k = 0; k < GQ_N; k++) set.p[k] = k < GQ_N_V09 ? s9.p[k] : GQ[k].def;
+            ok = 1;
+        }
         if (!ok && !log_load(&s8, sizeof s8)) {
             set.oct = s8.oct, set.ch = s8.ch, set.fn = s8.fn, set.layer = s8.layer, set.cur = s8.cur;
             set.mod = s8.mod, set.chord = s8.chord;

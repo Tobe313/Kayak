@@ -16,7 +16,7 @@ complete source under the same licence too.
 | The app `firmware/src/dinghy.c`, the wiring `platform.c`, the host mode `tests/`, the docs | zvenson |
 | Kayak: the fork and its changes | Tobe313 |
 | The arpeggiator and the step sequencer `firmware/src/kayak_seq.h` (cut down to one sound and one track) | Copyright (C) 2026 zvenson ([OberVave](https://github.com/zvenson/obervave): `obv_engine.h`, `obv_seq.h`), with Tobe313's changes, GPL-3.0-only |
-| The voice filter `firmware/src/obv_filter.h`, the effects `firmware/src/obv_fx.h` (chorus, delay, reverb, drive), the table `OBV_SVF_G` in `firmware/gen/grain_tables.h` | Copyright (C) 2026 zvenson ([OberVave](https://github.com/zvenson/obervave): `obv_dsp.h`, `obv_fx.h`, `tools/gen_tables.py`), GPL-3.0-only |
+| The voice filter `firmware/src/obv_filter.h`, the effects `firmware/src/obv_fx.h` (delay, reverb, drive; its stereo phaser is Tobe313's, in place of OberVave's chorus), the table `OBV_SVF_G` in `firmware/gen/grain_tables.h` | Copyright (C) 2026 zvenson ([OberVave](https://github.com/zvenson/obervave): `obv_dsp.h`, `obv_fx.h`, `tools/gen_tables.py`), GPL-3.0-only |
 | GRAIN: the source generator `firmware/src/grain_src.c` (unchanged), the grain player in `firmware/src/grain.c` (cut down from its `eng_grain.c`) | Copyright (C) 2026 ChoralRoot FM-1 contributors ([ChoralRoot FM-1](https://github.com/Quixotic7/ChoralRootFM1), a Felucca fork), GPL-3.0-only |
 | The DSP blocks `firmware/src/grain_dsp.h` and the tables `firmware/gen/grain_tables.h` (the formulas of its `tools/gen_tables.py`) | Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments (Felucca's `dsp.c`, as ChoralRoot carries it) |
 

@@ -21,7 +21,7 @@ a square an octave under, noise), each with its own filter, ADSR and LFO; the ef
 | ENV, LFO | the layer's ADSR (ATK DEC SUS REL), its LFO (RATE WAVE DEPTH DEST) |
 | GLO | **GLOBAL**: the two layers' levels (GRAIN, ANLG), the MIDI channel (OMNI or 1..16) and **CHORD**: the chord a key plays (- the one note, MAJ MIN 7 MAJ7 MIN7 SUS2 SUS4 DIM AUG POWER ADD9), out over MIDI too; **PERFORM**: what HOME's four knobs turn (by default BAL: the grains against the analog layer, CUTS: both filters' cutoffs, D.FB and DELAY: the delay's feedback and mix; or MORPH, POS, a filter, a level, an effect's mix, the arp's GATE RATCH CHNCE...) |
 | ARP | a short press: the arpeggiator on (lit, as it was last) or off, and its pages: **ARP** (MODE DIV OCT GATE: UP DOWN UP/DN RANDOM PLAYED, 1/4 .. 1/32T, 1..4 octaves), **ARP+** (RATCH: the step cut into 1..4 hits, CHNCE: the chance it plays); held: **HOLD**, the notes stay after the keys are up (ARP blinks); then the keys transpose them |
-| FX | a short press: the effects' pages and back: **CHORUS** (RATE DEPTH MIX), **DELAY** (TIME FDBK TONE MIX), **REVERB** (SIZE DAMP PRE MIX), **DRIVE** (TYPE AMNT TONE MIX); held: **FX MIX**, the four effects' MIX on the four knobs |
+| FX | a short press: the effects' pages and back: **PHASER** (RATE DEPTH FDBK MIX: a stereo phaser), **DELAY** (TIME FDBK TONE MIX), **REVERB** (SIZE DAMP PRE MIX), **DRIVE** (TYPE AMNT TONE MIX); held: **FX MIX**, the four effects' MIX on the four knobs |
 | SELECT | the pages of the function its button opened (the button pressed again: the next one too) |
 | SEQ | the step sequencer's screen (lit): one track of up to 64 steps, as a list of rows. SELECT goes from row to row, the four knobs set the row's values: **PATTERN** (TEMPO 40..240 BPM, STEPS, DIV, SWING), a **step** (NOTE: under C0 a rest; CHORD: the notes again from the root; VEL; GATE: past 99 % a TIE into the next step). SEQ again: **SEQ+**, the second page: a step's **RATCH** (1..4 hits) and **CHNCE** (the chance it plays). With the arpeggiator on (ARP), the steps' notes and chords play it. **REC** (lit) arms the keys: they write the row's step (keys held together, or GLO's CHORD: a chord of up to 4) and go to the next row; the top F# (F#5 at OCT 0, dimly lit) writes a rest. HOME or a function button leaves |
 | transpose | while the sequencer runs, or the arp holds notes (HOLD), a key transposes what plays instead of playing it: from C4, +-2 octaves (HOME and SEQ show it, T+5); it goes back to 0 when both stop. While REC writes, the keys write steps; to hold another chord, HOLD off and on |
@@ -32,10 +32,11 @@ a square an octave under, noise), each with its own filter, ADSR and LFO; the ef
 | SAVE | save the sound: PRESETS picks the user slot (1..16), SAVE again writes it, HOME cancels |
 | OCT- OCT+ | the octave |
 
-The filter and the effects are [OberVave](https://github.com/zvenson/obervave)'s (zvenson): its voice filter (an
+The filter and most effects are [OberVave](https://github.com/zvenson/obervave)'s (zvenson): its voice filter (an
 input stage driven into a tanh, then LP12 HP12 BP12 NOTCH and SEM (LP .. notch .. HP by the SEM knob) from a
-saturating SVF, or LP24 from a ladder; KTRK makes the cutoff follow the note), and its stereo chorus, ping-pong delay
-(20 .. 550 ms here), Dattorro plate reverb and parallel drive (OVER DIST FUZZ CRUSH).
+saturating SVF, or LP24 from a ladder; KTRK makes the cutoff follow the note), and its ping-pong delay
+(20 .. 550 ms here), Dattorro plate reverb and parallel drive (OVER DIST FUZZ CRUSH). The phaser is Kayak's: two chains of six
+allpasses, left and right, swept a quarter turn apart, with feedback.
 The LFOs (SINE TRI SAW SQR S&H, 0.05 .. 20 Hz): the grains' moves MORPH POS SIZE DENS SPRD PITCH or CUT, the
 analog layer's PITCH CUT LEVEL or PW.
 The arpeggiator and the step sequencer are OberVave's too, cut down to one sound and one track (`kayak_seq.h`); the arp

@@ -50,15 +50,17 @@ enum {
     GQ_ALRATE, GQ_ALWAVE, GQ_ALDEPTH, GQ_ALDEST,
     GQ_GLEV, GQ_ALEV,                            /* the layers' levels */
     GQ_AMODE, GQ_ADIV, GQ_AOCT, GQ_AGATE,        /* OberVave's arpeggiator (kayak_seq.h) */
-    GQ_CRATE, GQ_CDEPTH, GQ_CMIX,                /* OberVave's effects */
+    GQ_PRATE, GQ_PDEPTH, GQ_PMIX,                /* the effects: the phaser (Kayak's; OberVave's chorus before 1.1) */
     GQ_DTIME, GQ_DFB, GQ_DTONE, GQ_DMIX,
     GQ_RSIZE, GQ_RDAMP, GQ_RPRE, GQ_RMIX,
     GQ_VTYPE, GQ_VAMT, GQ_VTONE, GQ_VMIX,
     GQ_ARATCH, GQ_ACHANCE,                       /* (0.9) the arp's ratchet and chance: last, so a 0.8 sound keeps its
                                                  * order */
+    GQ_PFB,                                      /* (1.1) the phaser's feedback (PRATE PDEPTH PMIX: the chorus's were) */
     GQ_N
 };
 #define GQ_N_V08 71u                            /* the knobs of a 0.8 sound (its user presets, its settings) */
+#define GQ_N_V09 73u                            /* .. of a 0.9 / 1.0 sound */
 /* how a value reads on the screen (gq_text) */
 /* (labels and values of five characters at most: six of FONT_S fill a 60 px cell, they would touch the next) */
 enum { GF_INT, GF_TYPE, GF_PCT, GF_SIGNED, GF_SEMI, GF_SIZE, GF_DENS, GF_CUT, GF_TIME, GF_LFOHZ, GF_LWAVE, GF_LDEST,
@@ -103,6 +105,7 @@ static const gq_desc_t GQ[GQ_N] = {
     {"TYPE", 0, NDV - 1, DV_OVERDRIVE, GF_VTYPE}, {"AMNT", 0, 127, 60, GF_PCT}, {"TONE", 0, 127, 90, GF_PCT},
     {"MIX", 0, 127, 0, GF_PCT},
     {"RATCH", 1, 4, 1, GF_INT}, {"CHNCE", 0, 127, 127, GF_PCT},
+    {"FDBK", 0, 127, 50, GF_PCT},
 };
 static volatile int8_t gp_p[GQ_N];
 static void gp_defaults(void)
@@ -120,16 +123,16 @@ static const char *const GP_FACT_NAMES[GP_NFACT] = {
     "CLOUD PAD", "SHIMMER", "BREATH PAD", "FROZEN", "STRUM", "SWARM", "ACID DUST", "GLITCH",
     "SUB PAD", "ANA BASS", "POLY SAW", "PLUCK ARP"};
 static const int8_t PF_CLOUD_PAD[] = {GQ_ATK, 40, GQ_REL, 90, GQ_LRATE, 30, GQ_LDEPTH, 50,
-    GQ_CMIX, 40, GQ_DTIME, 90, GQ_DFB, 45, GQ_DTONE, 50, GQ_DMIX, 25, GQ_RSIZE, 110, GQ_RDAMP, 70, GQ_RPRE, 40,
+    GQ_PMIX, 40, GQ_DTIME, 90, GQ_DFB, 45, GQ_DTONE, 50, GQ_DMIX, 25, GQ_RSIZE, 110, GQ_RDAMP, 70, GQ_RPRE, 40,
     GQ_RMIX, 60, GQ_VAMT, 40, -1};
 static const int8_t PF_SHIMMER[] = {GQ_TYPE_A, GT_BELL, GQ_TYPE_B, GT_BELL, GQ_TONE_B, 104, GQ_MOTION_B, 104,
     GQ_SEED_B, 11, GQ_SIZE, 70, GQ_DENS, 100, GQ_POS, 30, GQ_SPRD, 30, GQ_MORPH, 64, GQ_RAND, 24, GQ_PITCH, 12,
-    GQ_SCAN, 8, GQ_CUT, 110, GQ_RES, 10, GQ_REL, 96, GQ_LRATE, 45, GQ_LDEPTH, 70, GQ_CMIX, 30, GQ_CRATE, 40,
-    GQ_CDEPTH, 50, GQ_DTIME, 100, GQ_DFB, 55, GQ_DTONE, 60, GQ_DMIX, 35, GQ_RSIZE, 120, GQ_RDAMP, 60, GQ_RPRE, 50,
+    GQ_SCAN, 8, GQ_CUT, 110, GQ_RES, 10, GQ_REL, 96, GQ_LRATE, 45, GQ_LDEPTH, 70, GQ_PMIX, 30, GQ_PRATE, 40,
+    GQ_PDEPTH, 50, GQ_DTIME, 100, GQ_DFB, 55, GQ_DTONE, 60, GQ_DMIX, 35, GQ_RSIZE, 120, GQ_RDAMP, 60, GQ_RPRE, 50,
     GQ_RMIX, 70, GQ_VAMT, 40, -1};
 static const int8_t PF_BREATH_PAD[] = {GQ_TYPE_A, GT_BREATH, GQ_TYPE_B, GT_VOWEL, GQ_MOTION_B, 20, GQ_SEED_B, 3,
     GQ_MORPH, 64, GQ_RAND, 10, GQ_FTYPE, F_SEM, GQ_CUT, 96, GQ_RES, 30, GQ_FMORPH, 30, GQ_ATK, 50, GQ_REL, 96,
-    GQ_LRATE, 25, GQ_LWAVE, 1, GQ_LDEPTH, 40, GQ_LDEST, GD_POS, GQ_CRATE, 25, GQ_CDEPTH, 60, GQ_CMIX, 50,
+    GQ_LRATE, 25, GQ_LWAVE, 1, GQ_LDEPTH, 40, GQ_LDEST, GD_POS, GQ_PRATE, 25, GQ_PDEPTH, 60, GQ_PMIX, 50,
     GQ_DTIME, 80, GQ_DFB, 40, GQ_DTONE, 40, GQ_RSIZE, 115, GQ_RDAMP, 80, GQ_RPRE, 40, GQ_RMIX, 55, GQ_VAMT, 40, -1};
 static const int8_t PF_FROZEN[] = {GQ_TYPE_A, GT_VOWEL, GQ_TONE_A, 28, GQ_MOTION_A, 20, GQ_SEED_A, 3,
     GQ_TYPE_B, GT_BREATH, GQ_TONE_B, 28, GQ_MOTION_B, 20, GQ_SEED_B, 3, GQ_SIZE, 108, GQ_DENS, 72, GQ_POS, 40,
@@ -139,12 +142,12 @@ static const int8_t PF_FROZEN[] = {GQ_TYPE_A, GT_VOWEL, GQ_TONE_A, 28, GQ_MOTION
 static const int8_t PF_STRUM[] = {GQ_TYPE_A, GT_PLUCK, GQ_MOTION_A, 100, GQ_TYPE_B, GT_METAL, GQ_SIZE, 60,
     GQ_DENS, 80, GQ_POS, 20, GQ_SPRD, 30, GQ_MORPH, 0, GQ_RAND, 10, GQ_SCAN, 0, GQ_CUT, 110, GQ_RES, 0,
     GQ_KTRK, 80, GQ_ATK, 2, GQ_DEC, 60, GQ_SUS, 40, GQ_REL, 70, GQ_LRATE, 50, GQ_LWAVE, 2, GQ_LDEPTH, 40,
-    GQ_AMODE, A_UP, GQ_AOCT, 2, GQ_AGATE, 50, GQ_CMIX, 25, GQ_DTIME, 70, GQ_DTONE, 60, GQ_DMIX, 40, GQ_RSIZE, 90,
+    GQ_AMODE, A_UP, GQ_AOCT, 2, GQ_AGATE, 50, GQ_PMIX, 25, GQ_DTIME, 70, GQ_DTONE, 60, GQ_DMIX, 40, GQ_RSIZE, 90,
     GQ_RDAMP, 70, GQ_RPRE, 20, GQ_RMIX, 30, GQ_VAMT, 40, -1};
 static const int8_t PF_SWARM[] = {GQ_TYPE_A, GT_CHIRP, GQ_TYPE_B, GT_SWEEP, GQ_SIZE, 48, GQ_DENS, 110,
     GQ_SPRD, 60, GQ_MORPH, 64, GQ_RAND, 60, GQ_SCAN, 20, GQ_FTYPE, F_BP12, GQ_CUT, 120, GQ_RES, 40, GQ_FDRIVE, 20,
-    GQ_ATK, 20, GQ_REL, 80, GQ_LRATE, 60, GQ_LWAVE, 4, GQ_LDEPTH, 50, GQ_LDEST, GD_CUT, GQ_CRATE, 60, GQ_CDEPTH, 70,
-    GQ_CMIX, 40, GQ_DTIME, 60, GQ_DFB, 60, GQ_DMIX, 40, GQ_RSIZE, 100, GQ_RDAMP, 70, GQ_RPRE, 20, GQ_RMIX, 35,
+    GQ_ATK, 20, GQ_REL, 80, GQ_LRATE, 60, GQ_LWAVE, 4, GQ_LDEPTH, 50, GQ_LDEST, GD_CUT, GQ_PRATE, 60, GQ_PDEPTH, 70,
+    GQ_PMIX, 40, GQ_DTIME, 60, GQ_DFB, 60, GQ_DMIX, 40, GQ_RSIZE, 100, GQ_RDAMP, 70, GQ_RPRE, 20, GQ_RMIX, 35,
     GQ_VTYPE, DV_DIST, GQ_VAMT, 50, GQ_VTONE, 80, GQ_VMIX, 20, -1};
 static const int8_t PF_ACID_DUST[] = {GQ_TYPE_A, GT_SWEEP, GQ_TONE_A, 104, GQ_MOTION_A, 104, GQ_SEED_A, 11,
     GQ_TYPE_B, GT_PLUCK, GQ_TONE_B, 104, GQ_MOTION_B, 104, GQ_SEED_B, 11, GQ_SIZE, 30, GQ_DENS, 118, GQ_SPRD, 80,
@@ -159,7 +162,7 @@ static const int8_t PF_GLITCH[] = {GQ_TYPE_A, GT_METAL, GQ_TYPE_B, GT_DRONE, GQ_
     GQ_VTYPE, DV_CRUSH, GQ_VAMT, 70, GQ_VTONE, 100, GQ_VMIX, 50, -1};
 static const int8_t PF_SUB_PAD[] = {GQ_ATK, 40, GQ_REL, 90, GQ_LRATE, 30, GQ_LDEPTH, 50,     /* CLOUD PAD over a square sub */
     GQ_ALEV, 70, GQ_OWAVE, OW_SQR, GQ_ODET, 20, GQ_OOCT, -1, GQ_ACUT, 55, GQ_ARES, 15, GQ_AATK, 40, GQ_ADEC, 64,
-    GQ_ASUS, 127, GQ_AREL, 90, GQ_CMIX, 40, GQ_DTIME, 90, GQ_DFB, 45, GQ_DMIX, 20, GQ_RSIZE, 110, GQ_RDAMP, 70,
+    GQ_ASUS, 127, GQ_AREL, 90, GQ_PMIX, 40, GQ_DTIME, 90, GQ_DFB, 45, GQ_DMIX, 20, GQ_RSIZE, 110, GQ_RDAMP, 70,
     GQ_RPRE, 40, GQ_RMIX, 60, -1};
 static const int8_t PF_ANA_BASS[] = {GQ_GLEV, 0, GQ_ALEV, 110, GQ_OWAVE, OW_SAW, GQ_ODET, 25, GQ_OOCT, -1,   /* analog alone */
     GQ_OSUB, 60, GQ_AFTYPE, F_LP24, GQ_ACUT, 45, GQ_ARES, 50, GQ_AFDRIVE, 30, GQ_AKTRK, 90, GQ_AATK, 1, GQ_ADEC, 50,
@@ -167,7 +170,7 @@ static const int8_t PF_ANA_BASS[] = {GQ_GLEV, 0, GQ_ALEV, 110, GQ_OWAVE, OW_SAW,
 static const int8_t PF_POLY_SAW[] = {GQ_TYPE_A, GT_BELL, GQ_TYPE_B, GT_BELL, GQ_TONE_B, 104, GQ_MOTION_B, 104,
     GQ_SEED_B, 11, GQ_MORPH, 64, GQ_PITCH, 12, GQ_GLEV, 50, GQ_ALEV, 90, GQ_OWAVE, OW_SAW, GQ_ODET, 70,
     GQ_AFTYPE, F_LP12, GQ_ACUT, 85, GQ_ARES, 20, GQ_AATK, 20, GQ_ADEC, 70, GQ_ASUS, 100, GQ_AREL, 70,
-    GQ_ALRATE, 30, GQ_ALDEPTH, 20, GQ_ALDEST, AD_CUT, GQ_CMIX, 60, GQ_RSIZE, 105, GQ_RMIX, 50, -1};
+    GQ_ALRATE, 30, GQ_ALDEPTH, 20, GQ_ALDEST, AD_CUT, GQ_PMIX, 60, GQ_RSIZE, 105, GQ_RMIX, 50, -1};
 static const int8_t PF_PLUCK_ARP[] = {GQ_TYPE_A, GT_PLUCK, GQ_TYPE_B, GT_PLUCK, GQ_TONE_B, 104, GQ_MORPH, 30,
     GQ_ATK, 2, GQ_DEC, 50, GQ_SUS, 30, GQ_REL, 40, GQ_GLEV, 40, GQ_ALEV, 100, GQ_OWAVE, OW_SQR, GQ_OPW, 40,
     GQ_ACUT, 60, GQ_ARES, 45, GQ_AATK, 1, GQ_ADEC, 45, GQ_ASUS, 0, GQ_AREL, 30, GQ_AMODE, A_UP, GQ_AOCT, 2,
@@ -661,8 +664,8 @@ static void gp_audio(int32_t *out, uint32_t n)
             }
         }
     }
-    /* OberVave's effects on the whole sound: the drive beside it, then the chorus, the delay and the reverb */
-    fx_block(gp_p[GQ_CRATE], gp_p[GQ_CDEPTH], gp_p[GQ_CMIX], (int32_t)gp_dly_ms(gp_p[GQ_DTIME]), gp_p[GQ_DFB],
+    /* the effects on the whole sound: the drive beside it, then the phaser, the delay and the reverb */
+    fx_block(gp_p[GQ_PRATE], gp_p[GQ_PDEPTH], gp_p[GQ_PFB], gp_p[GQ_PMIX], (int32_t)gp_dly_ms(gp_p[GQ_DTIME]), gp_p[GQ_DFB],
              gp_p[GQ_DTONE], gp_p[GQ_DMIX], gp_p[GQ_RSIZE], gp_p[GQ_RDAMP], gp_p[GQ_RPRE], gp_p[GQ_RMIX], n);
     drive_process(out, dry, n, (uint32_t)gp_p[GQ_VTYPE], (uint32_t)gp_p[GQ_VAMT], (uint32_t)gp_p[GQ_VTONE],
                   (uint32_t)gp_p[GQ_VMIX]);

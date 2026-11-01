@@ -1,7 +1,7 @@
 # Kayak user guide
 
 <!-- Keep this line in step with the release: the guide describes this version. -->
-> **Applies to Kayak 1.0** (package identity `FM-1_987`) · [Releases](https://github.com/Tobe313/Kayak/releases) ·
+> **Applies to Kayak 1.1** (package identity `FM-1_987`) · [Releases](https://github.com/Tobe313/Kayak/releases) ·
 > [Version history](#10-version-history)
 
 ## Summary
@@ -13,7 +13,7 @@ Kayak is a custom firmware for the **M-VAVE FM-1** (and builds for the M-Vave SM
   mixed by MORPH. The engine comes from [ChoralRoot FM-1](https://github.com/Quixotic7/ChoralRootFM1).
 - **ANALOG layer**: two detuned oscillators (SAW, SQR, TRI), a sub-oscillator and noise.
 - Each layer has its own **filter**, **ADSR envelope** and **LFO**.
-- The **effects** (chorus, delay, reverb, drive) work on the whole sound.
+- The **effects** (stereo phaser, delay, reverb, drive) work on the whole sound.
 - The **arpeggiator** (with HOLD, ratchet and chance), the **step sequencer** (64 steps, chords, ratchet, chance; it
   played through the arp when it is on), **chords on one key** and **live transposition** all come from or build on
   [OberVave](https://github.com/zvenson/obervave).
@@ -44,7 +44,7 @@ Kayak is a fork of [Dinghy](https://github.com/zvenson/dinghy) (zvenson), the mi
    - 4.7 [Global (GLO)](#47-global-glo)
    - 4.8 [Performance knobs (PERFORM)](#48-performance-knobs-perform)
 5. [Effects (FX)](#5-effects-fx)
-   - 5.1 [Chorus](#51-chorus)
+   - 5.1 [Phaser](#51-phaser)
    - 5.2 [Delay](#52-delay)
    - 5.3 [Reverb](#53-reverb)
    - 5.4 [Drive](#54-drive)
@@ -149,7 +149,7 @@ Each function button opens its own **pages**, four values per page:
 | ENV | GRN ENV | ANA ENV |
 | LFO | GRN LFO | ANA LFO |
 | ARP | ARP, ARP+ | ARP, ARP+ |
-| FX | FX CHORUS, FX DELAY, FX REVERB, FX DRIVE | (same) |
+| FX | FX PHASER, FX DELAY, FX REVERB, FX DRIVE | (same) |
 | FX (held) | FX MIX | (same) |
 | GLO | GLOBAL, PERFORM | GLOBAL, PERFORM |
 
@@ -277,7 +277,7 @@ part of the sound.
 | Grains | MORPH, POS, SIZE, DENS, SPRD, RAND, PITCH, SCAN |
 | GRAIN layer | G.CUT, G.RES, G.ATK, G.REL, G.LFO (LFO depth), G.LEV (level) |
 | ANALOG layer | A.CUT, A.RES, A.DET, A.PW, A.SUB, A.ATK, A.REL, A.LFO (LFO depth), A.LEV (level) |
-| Effects | CHOR, DELAY, REVB, DRIVE (their MIX), D.FB (delay feedback), V.AMT (drive amount) |
+| Effects | PHASE, DELAY, REVB, DRIVE (their MIX), P.FB (phaser feedback), D.FB (delay feedback), V.AMT (drive amount) |
 | Arpeggiator | GATE, RATCH, CHNCE |
 | Combined | BAL: the GRAIN and ANLG levels as one balance (left: the grains alone, middle: both full, right: the analog alone), shown as grains:analog (`50:50`); CUTS: both filters' cutoffs moved together, shown as their mean |
 
@@ -286,20 +286,23 @@ mix.
 
 ## 5. Effects (FX)
 
-These are OberVave's effects, applied to the whole output in this order: drive (in parallel), chorus, delay, reverb.
+The phaser is Kayak's; the delay, reverb and drive are OberVave's. They work on the whole output in this order:
+drive (in parallel), phaser, delay, reverb.
 
 - **Short press on FX:** opens the effect pages. Press again to go back to the sound pages.
 - **Long press (½ s):** opens FX MIX.
 
 A soft limiter at the output keeps loud chords from clipping.
 
-### 5.1 Chorus
+### 5.1 Phaser
 
-| RATE | DEPTH | MIX |
-| --- | --- | --- |
-| Speed of the modulation | Depth of the modulation | Wet amount |
+| RATE | DEPTH | FDBK | MIX |
+| --- | --- | --- | --- |
+| Speed of the sweep, 0.05 – 4 Hz | Width of the sweep, up to 6 octaves above 160 Hz | Feedback: sharper, more resonant notches | Amount: at 100 % the deepest notches |
 
-The chorus is stereo.
+The phaser is stereo: two chains of six allpass stages, swept by the same triangle LFO a quarter turn apart on the
+left and the right. It replaced OberVave's chorus in 1.1; a sound saved before keeps its RATE, DEPTH and MIX values,
+now on the phaser.
 
 ### 5.2 Delay
 
@@ -327,7 +330,7 @@ The drive runs in parallel with the dry sound.
 
 ### 5.5 FX MIX
 
-Hold **FX** to put the four effects' MIX on the four knobs: CHOR, DELAY, REVB, DRIVE.
+Hold **FX** to put the four effects' MIX on the four knobs: PHASE, DELAY, REVB, DRIVE.
 
 ## 6. Playing
 
@@ -477,7 +480,7 @@ also selects a preset.
 
 | # | Name | Layer | Character |
 | --- | --- | --- | --- |
-| 1 | CLOUD PAD | GRAIN | Drone and bell pad, slow attack, chorus, delay and reverb |
+| 1 | CLOUD PAD | GRAIN | Drone and bell pad, slow attack, phaser, delay and reverb |
 | 2 | SHIMMER | GRAIN | Bells an octave up, dense grains, long reverb |
 | 3 | BREATH PAD | GRAIN | Breath and vowel, SEM filter, LFO on POS |
 | 4 | FROZEN | GRAIN | Long grains, still vowel / breath texture, big reverb |
@@ -521,6 +524,7 @@ Presets 1–8 are ChoralRoot's GRAIN sounds, with Kayak's filter, envelope, LFO 
 
 | Version | Changes |
 | --- | --- |
+| **1.1** | OberVave's chorus replaced by a stereo phaser (FX PHASER: RATE DEPTH FDBK MIX). |
 | **1.0** | HOME's two views, MAIN and WAVES (the waves alone on the whole screen), turned by HOME again or SELECT. SELECT no longer leaves HOME. |
 | **0.9** | REC arms the sequencer's recording; the highest F# writes a rest. Ratchet and chance for the arp (ARP+) and the steps (SEQ+). With the arp on, the sequencer's steps play through it. GRAIN pages named GRN. Both layers drawn, the current one in front. HOME: four performance knobs chosen on GLO › PERFORM (by default the layers' balance, both cutoffs, the delay's feedback and mix), shown over the scope. ANA pages: the analog output over half a second. User presets, settings and the sequence of 0.8 are kept. |
 | **0.8** | Chords on one key (GLO › CHORD). Keys transpose the running sequence and the held arp. Sequencer redesigned as rows (PATTERN; per step NOTE, CHORD, VEL, GATE). Soft limiter on the output. |
@@ -541,11 +545,11 @@ The full release notes and packages are on the [releases page](https://github.co
 | Platform (boot, USB, MIDI, updates, audio, storage) | [Felucca](https://github.com/hugelton/Felucca), via [SLOOP](https://github.com/isod89/sloop-fm1) | Leo Kuroshita (Hügelton Instruments), isod89 |
 | SMK-37 port | [genkigenki/sloop-fm1](https://github.com/genkigenki/sloop-fm1) (`smk37`), [fm1-to-smk37](https://github.com/genkigenki/fm1-to-smk37) | M. Geisler (genkigenki) |
 | GRAIN engine and source generator | [ChoralRoot FM-1](https://github.com/Quixotic7/ChoralRootFM1) ([GRAIN.md](https://github.com/Quixotic7/ChoralRootFM1/blob/main/docs/GRAIN.md)) | ChoralRoot FM-1 contributors |
-| Filter, effects, arpeggiator, sequencer | [OberVave](https://github.com/zvenson/obervave) | zvenson |
+| Filter, delay, reverb, drive, arpeggiator, sequencer | [OberVave](https://github.com/zvenson/obervave) | zvenson |
 | Update loader screen idea | [Skiff](https://github.com/illuminus5/skiff) | illuminus5 |
 | Signed builds | [zvenson/fm1-build](https://github.com/zvenson/fm1-build), [FM-1 Firmware Hub](https://thefirmwarehub.com) | zvenson |
 | Font | Terminus (SIL OFL 1.1) | Dimitar Zhekov |
-| Kayak: the fork, two layers, chords, transposition, sequencer UI, performance knobs | [Tobe313/Kayak](https://github.com/Tobe313/Kayak) | Tobe313 |
+| Kayak: the fork, two layers, chords, transposition, sequencer UI, performance knobs, phaser | [Tobe313/Kayak](https://github.com/Tobe313/Kayak) | Tobe313 |
 
 The full licensing is in [LICENSING.md](../LICENSING.md). Kayak is GPL-3.0-only. "M-VAVE", "FM-1" and "SMK-37" belong
 to their owners; Kayak is not made or endorsed by them.
