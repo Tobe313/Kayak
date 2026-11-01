@@ -1,5 +1,5 @@
 {
-  "what": "A granular synth: two sources made by a small synth from four knobs each (pluck, drone, bell, breath, chirp, sweep, vowel, metal), up to 16 grains morphing between them, a filter, an ADSR, an LFO, chorus, delay, reverb and drive, an arpeggiator, a step sequencer, 8 presets and 16 of yours.",
+  "what": "A granular synth: two sources made by a small synth from four knobs each (pluck, drone, bell, breath, chirp, sweep, vowel, metal), up to 16 grains morphing between them, an analog bass, a filter, an ADSR, an LFO, chorus, delay, reverb, drive, an arpeggiator, a step sequencer and presets.",
   "author": "Tobe313",
   "kinds": ["synth"],
   "image": "docs/card.png"
