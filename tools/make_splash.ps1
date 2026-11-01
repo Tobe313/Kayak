@@ -49,7 +49,7 @@ $last = -1; $n = 0
 for ($y = 0; $y -lt $H; $y++) {
     for ($x = 0; $x -lt 240; $x++) {
         $c = $bm.GetPixel($x, $y)
-        $v = (($c.R -shr 3) -shl 11) -bor (($c.G -shr 2) -shl 5) -bor ($c.B -shr 3)
+        $v = (([int]$c.R -shr 3) -shl 11) -bor (([int]$c.G -shr 2) -shl 5) -bor ([int]$c.B -shr 3)   # ([int]: a byte shifted stays a byte)
         if ($v -eq $last -and $n -lt 65535) { $n++ } else { if ($n) { $runs.Add($n); $runs.Add($last) }; $last = $v; $n = 1 }
     }
 }
