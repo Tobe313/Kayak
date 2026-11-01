@@ -83,6 +83,8 @@
 11800 shot
 11850 btn 7
 11890 shot
+11892 btn 7
+11898 shot
 11900 keys 0x2000
 12000 keys 0
 12100 btn 8

@@ -1,7 +1,7 @@
 # Kayak user guide
 
 <!-- Keep this line in step with the release: the guide describes this version. -->
-> **Applies to Kayak 1.2** (package identity `FM-1_987`) · [Releases](https://github.com/Tobe313/Kayak/releases) ·
+> **Applies to Kayak 1.3** (package identity `FM-1_987`) · [Releases](https://github.com/Tobe313/Kayak/releases) ·
 > [Version history](#10-version-history)
 
 ## Summary
@@ -44,6 +44,7 @@ Kayak is a fork of [Dinghy](https://github.com/zvenson/dinghy) (zvenson), the mi
    - 4.7 [Global (GLO)](#47-global-glo)
    - 4.8 [Performance knobs (PERFORM)](#48-performance-knobs-perform)
    - 4.9 [Your own samples (SMP)](#49-your-own-samples-smp)
+   - 4.10 [Polyphony and load (VOICES)](#410-polyphony-and-load-voices)
 5. [Effects (FX)](#5-effects-fx)
    - 5.1 [Phaser](#51-phaser)
    - 5.2 [Delay](#52-delay)
@@ -154,7 +155,7 @@ Each function button opens its own **pages**, four values per page:
 | ARP | ARP, ARP+ | ARP, ARP+ |
 | FX | FX PHASER, FX DELAY, FX REVERB, FX DRIVE | (same) |
 | FX (held) | FX MIX | (same) |
-| GLO | GLOBAL, PERFORM | GLOBAL, PERFORM |
+| GLO | GLOBAL, PERFORM, VOICES | GLOBAL, PERFORM, VOICES |
 
 How the screens are laid out:
 
@@ -314,6 +315,22 @@ With a sample, the source's other knobs change meaning:
 **Erase** on the page empties a slot. An empty slot is silent. A sound (preset) that uses SMP3 plays whatever is in
 slot 3 at the time. With SRC B on a sample, its pitch follows SRC A's ROOT (one root for both, as for the rendered
 sources).
+
+### 4.10 Polyphony and load (VOICES)
+
+VOICES is GLO's third page. Kayak plays up to 8 notes at once, each with both layers; a chord on a heavy sound (many
+grains, both layers, the effects) can need more time than the chip has, and the sound crackles. These three cells
+keep it in hand:
+
+| Knob | Range | What it does |
+| --- | --- | --- |
+| VOICE | 1–8 | The most notes at once. Past it a new note **steals** a voice: the quietest one already let go, else the oldest one held |
+| AUTO | ON, OFF | ON: when a block of sound takes over 85 % of its time, the quietest voice (a released one first) stops at once, at most one every 0.1 s, before the sound crackles |
+| LOAD | (read only) | How much of its time the sound takes, the worst of the last half second. Under ~70 % is comfortable |
+
+VOICE and AUTO belong to the device (kept after power-off, the same for every sound). If a sound crackles: watch
+LOAD while you play it, lower VOICE (6 or 4), or make the sound lighter (fewer grains: DENS, SIZE; the analog layer
+off with ANLG at 0 when it is not used).
 
 ## 5. Effects (FX)
 
@@ -557,6 +574,7 @@ Presets 1–8 are ChoralRoot's GRAIN sounds, with Kayak's filter, envelope, LFO 
 
 | Version | Changes |
 | --- | --- |
+| **1.3** | GLO › VOICES: the polyphony (VOICE 1–8, note stealing past it), AUTO (a voice stops when the audio runs late, so it does not crackle) and LOAD (the audio's load). |
 | **1.2** | Your own samples: a web page ([Kayak samples](https://tobe313.github.io/Kayak/samples/)) sends up to 8 samples of 0.74 s into the FM-1 over USB-MIDI; SRC A / B TYPE SMP1 … SMP8 plays them. |
 | **1.1** | OberVave's chorus replaced by a stereo phaser (FX PHASER: RATE DEPTH FDBK MIX). |
 | **1.0** | HOME's two views, MAIN and WAVES (the waves alone on the whole screen), turned by HOME again or SELECT. SELECT no longer leaves HOME. |
