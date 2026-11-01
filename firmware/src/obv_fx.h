@@ -85,9 +85,9 @@ static inline __attribute__((always_inline)) int32_t ph_run(uint32_t c, int32_t 
 {
     uint32_t k;
     int32_t a = ph_a[c];
-    x = sat16(x + ((ph_last[c] * ph_fb) >> 15));
-    for (k = 0; k < PH_N; k++) {                /* y = a (y1 - x) + x1 */
-        int32_t y = sat16(((a * (ph_y1[c][k] - x)) >> 15) + ph_x1[c][k]);
+    x = sat16(x + ((ph_last[c] * ph_fb + 16384) >> 15));
+    for (k = 0; k < PH_N; k++) {                /* y = a (y1 - x) + x1, rounded: a truncation would leave a DC */
+        int32_t y = sat16(((a * (ph_y1[c][k] - x) + 16384) >> 15) + ph_x1[c][k]);
         ph_x1[c][k] = x;
         ph_y1[c][k] = y;
         x = y;
@@ -235,8 +235,14 @@ static void drive_process(int32_t *out, const int32_t *vs, uint32_t n, uint32_t 
 /* the three effects side by side, each fed by its send (Kayak: the dry sound); out gets their returns */
 static void fx_process(int32_t *out, const int32_t *cs, const int32_t *ds, const int32_t *rs, uint32_t n)
 {
-    uint32_t i, do_dly = dly_active != 0, do_rev = rev_active != 0;
+    uint32_t i, do_dly = dly_active != 0, do_rev = rev_active != 0, quiet = 1;
     int32_t pm = ph_mix, dm = dly_mix, rm = rev_mix;
+    for (i = 0; i < n && pm; i++) quiet &= cs[i] == 0;
+    if (pm && quiet && ph_last[0] < 64 && ph_last[0] > -64 && ph_last[1] < 64 && ph_last[1] > -64) {
+        uint32_t k;                             /* the phaser's send silent, what rings in it near nothing: let it go */
+        for (k = 0; k < PH_N; k++) ph_x1[0][k] = ph_y1[0][k] = ph_x1[1][k] = ph_y1[1][k] = 0;
+        ph_last[0] = ph_last[1] = 0;
+    }
     for (i = 0; i < n; i++) {
         int32_t l = out[2u * i], r = out[2u * i + 1u];
         if (pm) {                               /* the phaser: the corners again every 16 frames */
