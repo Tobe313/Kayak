@@ -5,7 +5,7 @@
 **[The user guide](docs/GUIDE.md)**: every control, page and value, with the sources.
 **[Kayak samples](https://tobe313.github.io/Kayak/samples/)**: send your own samples into the FM-1 over USB (Chrome / Edge, Chrome on Android).
 
-Package identity `FM-1_987` (SMK-37: `SMK-37 Pro_987`, `SMK-37 Elite_987`, `MKE-P37_987`; up to 0.41: `_946`), packages `kayak*.fwsc`.
+Runs on every FM-1, the newer ones too (flash UC25HQ80 or Puya P25Q80, since 1.4). Package identity `FM-1_987` (SMK-37: `SMK-37 Pro_987`, `SMK-37 Elite_987`, `MKE-P37_987`; up to 0.41: `_946`), packages `kayak*.fwsc`.
 Kayak is a granular synth: the GRAIN engine of [ChoralRoot FM-1](https://github.com/Quixotic7/ChoralRootFM1)
 (its [docs/GRAIN.md](https://github.com/Quixotic7/ChoralRootFM1/blob/main/docs/GRAIN.md)), cut down to one part.
 Two sources, A and B, are rendered by a small synth from four knobs each (no samples): TYPE (PLUCK DRONE BELL BREATH

@@ -1,7 +1,7 @@
 # Kayak user guide
 
 <!-- Keep this line in step with the release: the guide describes this version. -->
-> **Applies to Kayak 1.3** (package identity `FM-1_987`) · [Releases](https://github.com/Tobe313/Kayak/releases) ·
+> **Applies to Kayak 1.4** (package identity `FM-1_987`) · [Releases](https://github.com/Tobe313/Kayak/releases) ·
 > [Version history](#10-version-history)
 
 ## Summary
@@ -81,6 +81,9 @@ Kayak is a fork of [Dinghy](https://github.com/zvenson/dinghy) (zvenson), the mi
 | **Command line** | Download `kayak-X.Y.fwsc` from the [releases](https://github.com/Tobe313/Kayak/releases), then run `python3 tools/fm1_install.py kayak-X.Y.fwsc`. Use `--info` to see what the FM-1 runs. |
 | **SMK-37** | Use `kayak-X.Y-smk37.fwsc`, `-smk37-elite` or `-smk37-mke` for your model. These builds pass the tests but have not been tried on a real SMK-37. |
 
+- **Older and newer FM-1s:** since 1.4 Kayak runs on both: the first FM-1s carry a Puya P25Q80 flash chip, the
+  newer ones (autumn 2026) a UC25HQ80. Before 1.4, on a newer FM-1 nothing was kept after power-off (presets,
+  settings, sequence, samples) and updates could not be written.
 - **Leaving Kayak:** install another firmware, or the official one, from the Hub. Kayak answers the Hub's updater like
   every firmware there.
 - **Your own samples:** the [Kayak samples](https://tobe313.github.io/Kayak/samples/) page sends them over USB,
@@ -575,6 +578,7 @@ Presets 1–8 are ChoralRoot's GRAIN sounds, with Kayak's filter, envelope, LFO 
 
 | Version | Changes |
 | --- | --- |
+| **1.4** | Runs on the newer FM-1s too (their flash chip, the UC25HQ80, beside the Puya P25Q80): settings, presets, the sequence and the samples are kept, and updates install. |
 | **1.3** | GLO › VOICES: the polyphony (VOICE 1–8, note stealing past it), AUTO (a voice stops when the audio runs late, so it does not crackle), LOAD (the audio's load) and NOW. The reverb and the phaser run at half the rate: the effects take about half the time. |
 | **1.2** | Your own samples: a web page ([Kayak samples](https://tobe313.github.io/Kayak/samples/)) sends up to 8 samples of 0.74 s into the FM-1 over USB-MIDI; SRC A / B TYPE SMP1 … SMP8 plays them. |
 | **1.1** | OberVave's chorus replaced by a stereo phaser (FX PHASER: RATE DEPTH FDBK MIX). |

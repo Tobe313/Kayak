@@ -51,6 +51,8 @@ sys.exit(0 if 1000 < peak < 32767 and tail < 50 else 1)
 PY
 run "SMK-37: velocity, a pad, an outer key, the pitch wheel" env BOARD=smk37 sh tests/run_host.sh tests/scripts/smk37.txt
 
+$CC -Ifirmware/hal -o "$OUT/fm1_flash_test" tests/fm1_flash_test.c
+run "FM-1 flash chips: the Puya and the UC25HQ80 of newer FM-1s" "$OUT/fm1_flash_test"
 $CC -DBOARD_SMK37=1 -Ifirmware/hal -o "$OUT/smk_flash_test" tests/smk_flash_test.c
 run "SMK-37 flash map: settings, blobs, owner tag, slots in the store; never the head, BTIF/USRTRIM, USR, key_mac" "$OUT/smk_flash_test"
 $CC -o "$OUT/smk_wheel_test" tests/smk_wheel_test.c
